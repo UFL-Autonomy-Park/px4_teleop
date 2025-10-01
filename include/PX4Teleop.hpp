@@ -14,6 +14,9 @@
 
 #include <px4_safety_lib/PX4Safety.hpp>
 
+#include "fleet_manager/msg/connected_agents.hpp"
+#include <vector>
+
 class PX4Teleop : public rclcpp::Node {
 private:
 	rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -22,12 +25,15 @@ private:
 
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
+    rclcpp::Subscription<fleet_manager::msg::ConnectedAgents>::SharedPtr connected_agents_sub_;
 
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr vel_publisher_;
 
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
 
     rclcpp::TimerBase::SharedPtr setpoint_timer_;
+
+    std::vector<std::string> connected_agents_;
 
     struct Axis {
         Axis() : axis(0), factor(0.0), offset(0.0) {}
@@ -55,6 +61,8 @@ private:
     LandedState landed_state_;
     mavros_msgs::msg::State current_state_;
     geometry_msgs::msg::Pose agent_pose_;
+    bool switch_agent_state_{false};
+    int current_agent_index_{0};
 
     std::string agent_id_;
     geometry_msgs::msg::TwistStamped setpoint_vel_;
@@ -69,6 +77,7 @@ private:
 
 	void state_callback(const mavros_msgs::msg::State::SharedPtr state_msg);
 	void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg);
+    void connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg);
 
 	void publish_setpoint();
 

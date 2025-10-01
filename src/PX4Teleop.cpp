@@ -54,11 +54,31 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Teleop::joy_callback, this, _1));
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
+    connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", 10, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
 
+// TODO: Add a map of cmd_vel publishers with agent_namespaces as keys
+// edit joy publisher to publish the current agent index.
+// Then load up multiple px4s in gazebo
+
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
+
+    // check for switch agent button press (R1)
+    if(joy_msg->buttons[5] > 0 && !switch_agent_state_) {
+        switch_agent_state_ = true;
+        current_agent_index_++;
+
+        if(current_agent_index_ == connected_agents_.size()+1)
+            current_agent_index_ = 0;
+
+        RCLCPP_INFO(this->get_logger(), "controlling agent %d", current_agent_index_);
+    }
+    else if(joy_msg->buttons[5] == 0 && switch_agent_state_)
+        switch_agent_state_ = false;
+
+
     if (!pose_init_) {
         RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
         return;
@@ -109,3 +129,12 @@ double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, cons
 
     return output;
 }
+
+    void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
+        connected_agents_ = connected_agents_msg->agent_namespaces;
+
+        for(auto iter : connected_agents_) {
+            RCLCPP_INFO(this->get_logger(), "%s", iter);
+        }
+    }
+

@@ -15,6 +15,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(fleet_manager REQUIRED)
 
 find_package(px4_safety_lib REQUIRED)
 
@@ -36,6 +37,7 @@ ament_target_dependencies(
     tf2_ros
     tf2_geometry_msgs
     px4_safety_lib
+    fleet_manager
 )
 
 target_include_directories(
