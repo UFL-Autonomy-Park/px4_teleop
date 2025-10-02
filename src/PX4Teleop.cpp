@@ -56,6 +56,8 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
     connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", 10, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
 
+    agent_iterator_ = cmd_vel_publishers_.begin();
+
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
 
@@ -68,12 +70,12 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     // check for switch agent button press (R1)
     if(joy_msg->buttons[5] > 0 && !switch_agent_state_) {
         switch_agent_state_ = true;
-        current_agent_index_++;
+        agent_iterator_++;
 
-        if(current_agent_index_ == connected_agents_.size()+1)
-            current_agent_index_ = 0;
+        if(agent_iterator_ == cmd_vel_publishers_.end())
+            agent_iterator_ = cmd_vel_publishers_.begin();
 
-        RCLCPP_INFO(this->get_logger(), "controlling agent %d", current_agent_index_);
+        RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first);
     }
     else if(joy_msg->buttons[5] == 0 && switch_agent_state_)
         switch_agent_state_ = false;
@@ -116,7 +118,7 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 void PX4Teleop::publish_setpoint() {
     rclcpp::Time now = this->get_clock()->now();
     setpoint_vel_.header.stamp = this->get_clock()->now();
-    vel_publisher_->publish(setpoint_vel_);
+    agent_iterator_->second->publish(setpoint_vel_);
 }
 
 double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
@@ -131,10 +133,36 @@ double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, cons
 }
 
     void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
-        connected_agents_ = connected_agents_msg->agent_namespaces;
+        std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(), connected_agents_msg->agent_namespaces.end());
 
-        for(auto iter : connected_agents_) {
-            RCLCPP_INFO(this->get_logger(), "%s", iter);
+        std::set<std::string> added_agents, removed_agents;
+
+        std::set_difference(updated_agents.begin(), updated_agents.end(),
+                            connected_agents_.begin(), connected_agents_.end(),
+                            std::inserter(added_agents, added_agents.begin()));
+
+        std::set_difference(connected_agents_.begin(), connected_agents_.end(),
+                            updated_agents.begin(), updated_agents.end(), 
+                            std::inserter(removed_agents, removed_agents.begin()));
+
+        for(const auto& agent : added_agents) {
+            // create publisher and add to map
+            RCLCPP_INFO(this->get_logger(), "Adding Agent: %s", agent.c_str());
+            
+            auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
+                    "/" + agent.c_str() + "setpoint_velocity/cmd_vel",
+                    10
+                );
+
+            cmd_vel_publishers_[agent.c_str()] = publisher;
+        }
+
+        for(const auto& agent: removed_agents) {
+            // remove from lsit of publishers
+            cmd_vel_publishers_.erase(agent.c_str());
         }
     }
 
+// connected agent callback <- fleet_manager_node
+// string[] agents == string[] current agents
+// 

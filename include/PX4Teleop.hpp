@@ -16,6 +16,8 @@
 
 #include "fleet_manager/msg/connected_agents.hpp"
 #include <vector>
+#include <set>
+#include <map>
 
 class PX4Teleop : public rclcpp::Node {
 private:
@@ -32,8 +34,6 @@ private:
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
 
     rclcpp::TimerBase::SharedPtr setpoint_timer_;
-
-    std::vector<std::string> connected_agents_;
 
     struct Axis {
         Axis() : axis(0), factor(0.0), offset(0.0) {}
@@ -63,6 +63,11 @@ private:
     geometry_msgs::msg::Pose agent_pose_;
     bool switch_agent_state_{false};
     int current_agent_index_{0};
+    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr>::iterator agent_iterator_;
+    // map iterator
+
+    std::set<std::string> connected_agents_;
+    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> cmd_vel_publishers_;
 
     std::string agent_id_;
     geometry_msgs::msg::TwistStamped setpoint_vel_;
