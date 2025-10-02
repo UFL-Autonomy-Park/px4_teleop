@@ -61,10 +61,6 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
 
-// TODO: Add a map of cmd_vel publishers with agent_namespaces as keys
-// edit joy publisher to publish the current agent index.
-// Then load up multiple px4s in gazebo
-
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
     // check for switch agent button press (R1)
@@ -118,7 +114,8 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 void PX4Teleop::publish_setpoint() {
     rclcpp::Time now = this->get_clock()->now();
     setpoint_vel_.header.stamp = this->get_clock()->now();
-    agent_iterator_->second->publish(setpoint_vel_);
+    if(agent_iterator_ != cmd_vel_publishers_.end())
+        agent_iterator_->second->publish(setpoint_vel_);
 }
 
 double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
@@ -133,7 +130,7 @@ double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, cons
 }
 
     void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
-        std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(), connected_agents_msg->agent_namespaces.end());
+        std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(),connected_agents_msg->agent_namespaces.end());
 
         std::set<std::string> added_agents, removed_agents;
 
@@ -145,22 +142,32 @@ double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, cons
                             updated_agents.begin(), updated_agents.end(), 
                             std::inserter(removed_agents, removed_agents.begin()));
 
-        for(const auto& agent : added_agents) {
+        for(std::set<std::string>::iterator agent = added_agents.begin(); agent != added_agents.end(); agent++) {
             // create publisher and add to map
-            RCLCPP_INFO(this->get_logger(), "Adding Agent: %s", agent.c_str());
+            RCLCPP_INFO(this->get_logger(), "adding a publisher");
+            RCLCPP_INFO(this->get_logger(), "size: %d", added_agents.size());
+            std::string topic = "/" + *agent + "setpoint_velocity/cmd_vel";
+
+            RCLCPP_INFO(this->get_logger(), "%s", topic);
             
             auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-                    "/" + agent.c_str() + "setpoint_velocity/cmd_vel",
+                    topic,
                     10
                 );
 
-            cmd_vel_publishers_[agent.c_str()] = publisher;
+            cmd_vel_publishers_.insert({*agent, publisher});
+            
+            // if this is the first agent, point iterator to beginning of map
+            if(agent_iterator_ == cmd_vel_publishers_.end())
+                agent_iterator_ == cmd_vel_publishers_.begin();
         }
 
         for(const auto& agent: removed_agents) {
             // remove from lsit of publishers
-            cmd_vel_publishers_.erase(agent.c_str());
+            cmd_vel_publishers_.erase(agent);
         }
+
+        connected_agents_ = updated_agents;
     }
 
 // connected agent callback <- fleet_manager_node
