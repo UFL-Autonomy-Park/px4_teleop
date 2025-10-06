@@ -50,13 +50,14 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
 
     //Publish setpoints at 50Hz
     setpoint_timer_ = this->create_wall_timer(20ms, std::bind(&PX4Teleop::publish_setpoint, this));
-    vel_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("setpoint_velocity/cmd_vel", 10);
     
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Teleop::joy_callback, this, _1));
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
-    connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", 10, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
 
-    agent_iterator_ = cmd_vel_publishers_.begin();
+    // setup qos profile
+    qos_profile_.reliable();
+    qos_profile_.transient_local();
+    connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", qos_profile_, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
@@ -64,7 +65,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
     // check for switch agent button press (R1)
-    if(joy_msg->buttons[5] > 0 && !switch_agent_state_) {
+    if(joy_msg->buttons[5] > 0 && !switch_agent_state_ && !cmd_vel_publishers_.empty()) {
         switch_agent_state_ = true;
         agent_iterator_++;
 
@@ -114,7 +115,7 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 void PX4Teleop::publish_setpoint() {
     rclcpp::Time now = this->get_clock()->now();
     setpoint_vel_.header.stamp = this->get_clock()->now();
-    if(agent_iterator_ != cmd_vel_publishers_.end())
+    if(!cmd_vel_publishers_.empty())
         agent_iterator_->second->publish(setpoint_vel_);
 }
 
@@ -129,47 +130,53 @@ double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, cons
     return output;
 }
 
-    void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
-        std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(),connected_agents_msg->agent_namespaces.end());
+void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
+    std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(),connected_agents_msg->agent_namespaces.end());
 
-        std::set<std::string> added_agents, removed_agents;
+    std::set<std::string> added_agents, removed_agents;
 
-        std::set_difference(updated_agents.begin(), updated_agents.end(),
-                            connected_agents_.begin(), connected_agents_.end(),
-                            std::inserter(added_agents, added_agents.begin()));
+    std::set_difference(updated_agents.begin(), updated_agents.end(),
+                        connected_agents_.begin(), connected_agents_.end(),
+                        std::inserter(added_agents, added_agents.begin()));
 
-        std::set_difference(connected_agents_.begin(), connected_agents_.end(),
-                            updated_agents.begin(), updated_agents.end(), 
-                            std::inserter(removed_agents, removed_agents.begin()));
+    std::set_difference(connected_agents_.begin(), connected_agents_.end(),
+                        updated_agents.begin(), updated_agents.end(), 
+                        std::inserter(removed_agents, removed_agents.begin()));
 
-        for(std::set<std::string>::iterator agent = added_agents.begin(); agent != added_agents.end(); agent++) {
-            // create publisher and add to map
-            RCLCPP_INFO(this->get_logger(), "adding a publisher");
-            RCLCPP_INFO(this->get_logger(), "size: %d", added_agents.size());
-            std::string topic = "/" + *agent + "setpoint_velocity/cmd_vel";
-
-            RCLCPP_INFO(this->get_logger(), "%s", topic);
-            
-            auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-                    topic,
-                    10
-                );
-
-            cmd_vel_publishers_.insert({*agent, publisher});
-            
-            // if this is the first agent, point iterator to beginning of map
-            if(agent_iterator_ == cmd_vel_publishers_.end())
-                agent_iterator_ == cmd_vel_publishers_.begin();
-        }
-
-        for(const auto& agent: removed_agents) {
-            // remove from lsit of publishers
-            cmd_vel_publishers_.erase(agent);
-        }
-
-        connected_agents_ = updated_agents;
+    for(const auto& agent: added_agents) {
+        add_agent(agent);
+        RCLCPP_INFO(this->get_logger(), "Added cmd_vel publisher for agent: %s", agent.c_str());
     }
 
-// connected agent callback <- fleet_manager_node
-// string[] agents == string[] current agents
-// 
+    for(const auto& agent: removed_agents) {
+        remove_agent(agent);
+        RCLCPP_INFO(this->get_logger(), "Removed cmd_vel publisher for agent: %s", agent.c_str());
+    }
+
+    connected_agents_ = updated_agents;
+}
+
+void PX4Teleop::add_agent(const std::string &agent_name) {
+    std::string topic = "/" + agent_name + "/setpoint_velocity/cmd_vel";
+    
+    auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
+            topic,
+            10
+        );
+
+    cmd_vel_publishers_.insert({agent_name, publisher});
+    
+    // if this is the first agent, point iterator to beginning of map
+    if(cmd_vel_publishers_.size() == 1)
+        agent_iterator_ = cmd_vel_publishers_.begin();
+}
+
+void PX4Teleop::remove_agent(const std::string &agent_name) {
+    // check if currently controlling this agent, if so, set iterator to beginning of map
+    if(agent_name == agent_iterator_->first) {
+        cmd_vel_publishers_.erase(agent_name);
+        agent_iterator_ = cmd_vel_publishers_.begin();
+    }
+    else
+        cmd_vel_publishers_.erase(agent_name);
+}

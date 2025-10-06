@@ -21,6 +21,7 @@
 
 class PX4Teleop : public rclcpp::Node {
 private:
+    rclcpp::QoS qos_profile_{1};
 	rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     
@@ -28,8 +29,6 @@ private:
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
     rclcpp::Subscription<fleet_manager::msg::ConnectedAgents>::SharedPtr connected_agents_sub_;
-
-    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr vel_publisher_;
 
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
 
@@ -64,8 +63,8 @@ private:
     bool switch_agent_state_{false};
     int current_agent_index_{0};
     std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr>::iterator agent_iterator_;
-    // map iterator
-
+    void add_agent(const std::string& agent_name);
+    void remove_agent(const std::string& agent_name);
     std::set<std::string> connected_agents_;
     std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> cmd_vel_publishers_;
 
