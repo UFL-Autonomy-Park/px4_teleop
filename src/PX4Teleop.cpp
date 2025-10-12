@@ -6,31 +6,10 @@ using namespace std::chrono_literals;
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false), joy_handler_(shared_from_this()) {
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
 
-    //joy_handler_ = JoyHandler(this);
+    joy_handler_ = JoyHandler(this);
 
     //Get my namespace (remove the slash with substr)
     agent_id_ = std::string(this->get_namespace()).substr(1);
-
-    //Get controller parameters
-    this->declare_parameter("x_axis", -1);
-    this->declare_parameter("y_axis", -1);
-    this->declare_parameter("z_axis", -1);
-    this->declare_parameter("yaw_axis", -1);
-
-    this->declare_parameter("x_vel_max", 1.0);
-    this->declare_parameter("y_vel_max", 1.0);
-    this->declare_parameter("z_vel_max", 1.0);
-    this->declare_parameter("yaw_vel_max", 1.0);
-
-    this->get_parameter("x_axis", axes_.x.axis);
-    this->get_parameter("y_axis", axes_.y.axis);
-    this->get_parameter("z_axis", axes_.z.axis);
-    this->get_parameter("yaw_axis", axes_.yaw.axis);
-
-    this->get_parameter("x_vel_max", axes_.x.factor);
-    this->get_parameter("y_vel_max", axes_.y.factor);
-    this->get_parameter("z_vel_max", axes_.z.factor);
-    this->get_parameter("yaw_vel_max", axes_.yaw.factor);
 
     //RCLCPP_INFO(this->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
 
@@ -65,14 +44,16 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false), joy_handler
 }
 
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
+    if (!pose_init_) {
+        RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
+        return;
+    }
+
     // call processing function in JoyHandler
-    // create cmd vel message from returned actions
-    // check for TOL and switch agent
-    // call publish vel function
+    JoyHandler::joy_action action = joy_handler_.process(joy_msg);
     
     // check for switch agent button press (R1)
-    if(joy_msg->buttons[5] > 0 && !switch_agent_state_ && !cmd_vel_publishers_.empty()) {
-        switch_agent_state_ = true;
+    if(action.switch_agent && !cmd_vel_publishers_.empty()) {
         agent_iterator_++;
 
         if(agent_iterator_ == cmd_vel_publishers_.end())
@@ -80,23 +61,12 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
         RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first);
     }
-    else if(joy_msg->buttons[5] == 0 && switch_agent_state_)
-        switch_agent_state_ = false;
-
-
-    if (!pose_init_) {
-        RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
-        return;
-    }
-
-    double apark_vx = get_axis(joy_msg, axes_.x);
-    double apark_vy = get_axis(joy_msg, axes_.y);
 
     geometry_msgs::msg::Twist unsafe_cmd_vel;
-    unsafe_cmd_vel.linear.x = apark_vx;
-    unsafe_cmd_vel.linear.y = apark_vy;
-    unsafe_cmd_vel.linear.z = get_axis(joy_msg, axes_.z);
-    unsafe_cmd_vel.angular.z = get_axis(joy_msg, axes_.yaw);
+    unsafe_cmd_vel.linear.x = action.linear_x;
+    unsafe_cmd_vel.linear.y = action.linear_y;
+    unsafe_cmd_vel.linear.z = action.linear_z;
+    unsafe_cmd_vel.angular.z = action.angular_z;
 
     //Generate safe velocity command
     geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
@@ -106,9 +76,6 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     setpoint_vel_.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
     setpoint_vel_.twist.linear.z = safe_cmd_vel.linear.z;
     setpoint_vel_.twist.angular.z = safe_cmd_vel.angular.z;
-
-    // RCLCPP_WARN(this->get_logger(), "Orig Twist: (%.4f, %.4f, %.4f)", unsafe_cmd_vel.linear.x, unsafe_cmd_vel.linear.y, unsafe_cmd_vel.linear.z);
-    // RCLCPP_WARN(this->get_logger(), "Safe Twist: (%.4f, %.4f, %.4f)", safe_cmd_vel.linear.x, safe_cmd_vel.linear.y, safe_cmd_vel.linear.z);
 }
 
 void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg) {
