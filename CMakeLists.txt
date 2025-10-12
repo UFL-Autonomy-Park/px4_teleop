@@ -23,7 +23,9 @@ add_executable(
     ${PROJECT_NAME}_node
     src/px4_teleop_node.cpp
     src/PX4Teleop.cpp
+    src/JoyHandler.cpp
     include/PX4Teleop.hpp
+    include/JoyHandler.hpp
 )
 
 ament_target_dependencies(

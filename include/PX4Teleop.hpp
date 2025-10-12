@@ -15,12 +15,15 @@
 #include <px4_safety_lib/PX4Safety.hpp>
 
 #include "fleet_manager/msg/connected_agents.hpp"
+#include "JoyHandler.hpp"
 #include <vector>
 #include <set>
 #include <map>
 
 class PX4Teleop : public rclcpp::Node {
 private:
+
+    JoyHandler joy_handler_;
     rclcpp::QoS qos_profile_{1};
 	rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
@@ -78,7 +81,6 @@ private:
 
 	void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg);
-
 	void state_callback(const mavros_msgs::msg::State::SharedPtr state_msg);
 	void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg);
     void connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg);

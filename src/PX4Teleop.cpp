@@ -3,8 +3,10 @@
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
-PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
+PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false), joy_handler_(shared_from_this()) {
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
+
+    //joy_handler_ = JoyHandler(this);
 
     //Get my namespace (remove the slash with substr)
     agent_id_ = std::string(this->get_namespace()).substr(1);
@@ -30,7 +32,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     this->get_parameter("z_vel_max", axes_.z.factor);
     this->get_parameter("yaw_vel_max", axes_.yaw.factor);
 
-    RCLCPP_INFO(this->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
+    //RCLCPP_INFO(this->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
 
     //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
     this->declare_parameter("origin_r", 0.0);
@@ -63,7 +65,11 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
 }
 
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
-
+    // call processing function in JoyHandler
+    // create cmd vel message from returned actions
+    // check for TOL and switch agent
+    // call publish vel function
+    
     // check for switch agent button press (R1)
     if(joy_msg->buttons[5] > 0 && !switch_agent_state_ && !cmd_vel_publishers_.empty()) {
         switch_agent_state_ = true;
