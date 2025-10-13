@@ -18,11 +18,12 @@ class JoyHandler {
         double angular_z;
     };
 
-    joy_action process(const sensor_msgs::msg::Joy &msg);
+    joy_action process(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
 
-    JoyHandler(rclcpp::Node::SharedPtr teleop_node);
+    JoyHandler(rclcpp::Node *parent_node);
 
 private:
+    rclcpp::Node *node_;
     struct Axis {
         Axis() : axis(0), factor(0.0), offset(0.0) {}
 
@@ -31,18 +32,18 @@ private:
         double offset;
     };
 
-    struct axes_ {
+    struct {
         Axis x;
         Axis y;
         Axis z;
         Axis yaw;
-    };
+    } axes_ ;
     
-    enum Button {
-        LAND = false,
-        SWITCH_AGENT = false,
-        OFFBOARD = false,
-        ARM = false
+    struct {
+        bool land = false;
+        bool switch_agent = false;
+        bool offboard = false;
+        bool arm = false;
     } pressed_buttons_;
 
     double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);

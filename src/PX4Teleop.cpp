@@ -3,42 +3,28 @@
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
-PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false), joy_handler_(shared_from_this()) {
+PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), joy_handler_(this), pose_init_(false) {
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
 
-    joy_handler_ = JoyHandler(this);
-
-    //Get my namespace (remove the slash with substr)
+    // initialize agent ID from namespace (remove leading slash)
     agent_id_ = std::string(this->get_namespace()).substr(1);
-
-    //RCLCPP_INFO(this->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
-
-    //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
-    this->declare_parameter("origin_r", 0.0);
-    if (this->get_parameter("origin_r", origin_r_)) {
-        RCLCPP_INFO(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
-        cos_origin_ = cos(origin_r_);
-        sin_origin_ = sin(origin_r_);
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Park origin rotation not set. Exiting.");
-        rclcpp::shutdown();
-        return;
-    }
-
-    px4_safety.initialize(this);
-
     setpoint_vel_.header.frame_id = agent_id_;
 
-    //Publish setpoints at 50Hz
+    //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
+    if(!initialize_origin_rotation()) rclcpp::shutdown();
+
+    // initialize PX4 safety library
+    px4_safety.initialize(this);
+
+    // publish setpoints at 50Hz
     setpoint_timer_ = this->create_wall_timer(20ms, std::bind(&PX4Teleop::publish_setpoint, this));
-    
+
+    // setup qos profile and subscribers
+    qos_profile_.reliable();
+    qos_profile_.transient_local(); // latched topics
+    connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", qos_profile_, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Teleop::joy_callback, this, _1));
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
-
-    // setup qos profile
-    qos_profile_.reliable();
-    qos_profile_.transient_local();
-    connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", qos_profile_, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
@@ -49,19 +35,20 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
         return;
     }
 
-    // call processing function in JoyHandler
+    // process joy message with joy handler (returns struct with actions)
     JoyHandler::joy_action action = joy_handler_.process(joy_msg);
     
-    // check for switch agent button press (R1)
+    // check for switch agent action
     if(action.switch_agent && !cmd_vel_publishers_.empty()) {
         agent_iterator_++;
 
         if(agent_iterator_ == cmd_vel_publishers_.end())
             agent_iterator_ = cmd_vel_publishers_.begin();
 
-        RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first);
+        RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first.c_str());
     }
 
+    // store unfiltered velocity command
     geometry_msgs::msg::Twist unsafe_cmd_vel;
     unsafe_cmd_vel.linear.x = action.linear_x;
     unsafe_cmd_vel.linear.y = action.linear_y;
@@ -92,16 +79,6 @@ void PX4Teleop::publish_setpoint() {
         agent_iterator_->second->publish(setpoint_vel_);
 }
 
-double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
-    if (axis.axis < 0 || std::abs(axis.axis) > (int)joy_msg->axes.size()-1) {
-        RCLCPP_ERROR(this->get_logger(), "Axis %d out of range, joy has %d axes", axis.axis, (int)joy_msg->axes.size());
-        return -1;
-    }
-
-    double output = joy_msg->axes[std::abs(axis.axis)] * axis.factor + axis.offset;
-
-    return output;
-}
 
 void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
     std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(),connected_agents_msg->agent_namespaces.end());
@@ -152,4 +129,18 @@ void PX4Teleop::remove_agent(const std::string &agent_name) {
     }
     else
         cmd_vel_publishers_.erase(agent_name);
+}
+
+bool PX4Teleop::initialize_origin_rotation() {
+    this->declare_parameter("origin_r", 0.0);
+
+    if (this->get_parameter("origin_r", origin_r_)) {
+        RCLCPP_INFO(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
+        cos_origin_ = cos(origin_r_);
+        sin_origin_ = sin(origin_r_);
+        return true;
+    } else {
+        RCLCPP_ERROR(this->get_logger(), "Park origin rotation not set. Exiting.");
+        return false;
+    }
 }

@@ -1,36 +1,38 @@
 #include "JoyHandler.hpp"
 
-JoyHandler::JoyHandler(rclcpp::Node *teleop_node) {
+JoyHandler::JoyHandler(rclcpp::Node *parent_node) {
+    node_ = parent_node;
+    
     //Get controller parameters
-    teleop_node->declare_parameter("x_axis", -1);
-    teleop_node->declare_parameter("y_axis", -1);
-    teleop_node->declare_parameter("z_axis", -1);
-    teleop_node->declare_parameter("yaw_axis", -1);
+    node_->declare_parameter("x_axis", -1);
+    node_->declare_parameter("y_axis", -1);
+    node_->declare_parameter("z_axis", -1);
+    node_->declare_parameter("yaw_axis", -1);
 
-    teleop_node->declare_parameter("x_vel_max", 1.0);
-    teleop_node->declare_parameter("y_vel_max", 1.0);
-    teleop_node->declare_parameter("z_vel_max", 1.0);
-    teleop_node->declare_parameter("yaw_vel_max", 1.0);
+    node_->declare_parameter("x_vel_max", 1.0);
+    node_->declare_parameter("y_vel_max", 1.0);
+    node_->declare_parameter("z_vel_max", 1.0);
+    node_->declare_parameter("yaw_vel_max", 1.0);
 
-    if(teleop_node->get_parameter("x_axis", axes_.x.axis) &&
-        teleop_node->get_parameter("y_axis", axes_.y.axis) &&
-        teleop_node->get_parameter("z_axis", axes_.z.axis) &&
-        teleop_node->get_parameter("yaw_axis", axes_.yaw.axis) &&
-        teleop_node->get_parameter("x_vel_max", axes_.x.factor) &&
-        teleop_node->get_parameter("y_vel_max", axes_.y.factor) &&
-        teleop_node->get_parameter("z_vel_max", axes_.z.factor) &&
-        teleop_node->get_parameter("yaw_vel_max", axes_.yaw.factor))
+    if(node_->get_parameter("x_axis", axes_.x.axis) &&
+        node_->get_parameter("y_axis", axes_.y.axis) &&
+        node_->get_parameter("z_axis", axes_.z.axis) &&
+        node_->get_parameter("yaw_axis", axes_.yaw.axis) &&
+        node_->get_parameter("x_vel_max", axes_.x.factor) &&
+        node_->get_parameter("y_vel_max", axes_.y.factor) &&
+        node_->get_parameter("z_vel_max", axes_.z.factor) &&
+        node_->get_parameter("yaw_vel_max", axes_.yaw.factor))
     {
-        RCLCPP_INFO(teleop_node->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
+        RCLCPP_INFO(node_->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
     }
 
     else {
-        RCLCPP_ERROR(teleop_node->get_logger(), "Park origin rotation not set. Exiting.");
+        RCLCPP_ERROR(node_->get_logger(), "Park origin rotation not set. Exiting.");
         rclcpp::shutdown();
     }
 }
 
-joy_action JoyHandler::process(const sensor_msgs::msg::Joy &joy_msg) {
+JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     joy_action action;
 
     // get joystick axes
@@ -40,11 +42,11 @@ joy_action JoyHandler::process(const sensor_msgs::msg::Joy &joy_msg) {
     action.angular_z = get_axis(joy_msg, axes_.yaw);
 
     // check switch agent button 
-    if (joy_msg.buttons[5] == 1 && pressed_buttons_.switch_agent == false) {
+    if (joy_msg->buttons[5] == 1 && pressed_buttons_.switch_agent == false) {
         action.switch_agent = true;
         pressed_buttons_.switch_agent = true;
     }
-    else if (joy_msg.buttons[5] == 0 && pressed_buttons_.switch_agent == true) {
+    else if (joy_msg->buttons[5] == 0 && pressed_buttons_.switch_agent == true) {
         action.switch_agent = false;
         pressed_buttons_.switch_agent = false;
     }
@@ -56,7 +58,7 @@ joy_action JoyHandler::process(const sensor_msgs::msg::Joy &joy_msg) {
 
 double JoyHandler::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
     if (axis.axis < 0 || std::abs(axis.axis) > (int)joy_msg->axes.size()-1) {
-        RCLCPP_ERROR(this->get_logger(), "Axis %d out of range, joy has %d axes", axis.axis, (int)joy_msg->axes.size());
+        RCLCPP_ERROR(node_->get_logger(), "Axis %d out of range, joy has %d axes", axis.axis, (int)joy_msg->axes.size());
         return -1;
     }
 

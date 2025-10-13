@@ -37,21 +37,6 @@ private:
 
     rclcpp::TimerBase::SharedPtr setpoint_timer_;
 
-    struct Axis {
-        Axis() : axis(0), factor(0.0), offset(0.0) {}
-
-        int axis;
-        double factor;
-        double offset;
-    };
-
-    struct {
-        Axis x;
-        Axis y;
-        Axis z;
-        Axis yaw;
-    } axes_;
-
     enum LandedState {
         undefined = 0,
         on_ground,
@@ -86,9 +71,8 @@ private:
     void connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg);
 
 	void publish_setpoint();
+    bool initialize_origin_rotation();
 
-    //Joy
-    double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);
 public:
     PX4Teleop();
 };
