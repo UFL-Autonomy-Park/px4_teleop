@@ -51,7 +51,7 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
         pressed_buttons_.switch_agent = false;
     }
 
-    // handle other buttons (currently in telemetry node)
+    // TODO: handle other buttons (currently in telemetry node)
     return action;
 }
 

@@ -24,7 +24,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), joy_handler_(this), pose_init_
     qos_profile_.transient_local(); // latched topics
     connected_agents_sub_ = this->create_subscription<fleet_manager::msg::ConnectedAgents>("/connected_agents", qos_profile_, std::bind(&PX4Teleop::connected_agents_callback, this, _1));
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Teleop::joy_callback, this, _1));
-    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
+    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/astro_sim1/autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
@@ -39,7 +39,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     JoyHandler::joy_action action = joy_handler_.process(joy_msg);
     
     // check for switch agent action
-    if(action.switch_agent && !cmd_vel_publishers_.empty()) {
+    if(action.switch_agent == true && !cmd_vel_publishers_.empty()) {
         agent_iterator_++;
 
         if(agent_iterator_ == cmd_vel_publishers_.end())

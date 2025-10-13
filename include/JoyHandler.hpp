@@ -39,11 +39,13 @@ private:
         Axis yaw;
     } axes_ ;
     
-    struct {
-        bool land = false;
-        bool switch_agent = false;
-        bool offboard = false;
-        bool arm = false;
+    struct Buttons {
+        Buttons() : land(false), switch_agent(false), offboard(false), arm(false) {}
+
+        bool land;
+        bool switch_agent;
+        bool offboard;
+        bool arm;
     } pressed_buttons_;
 
     double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);
