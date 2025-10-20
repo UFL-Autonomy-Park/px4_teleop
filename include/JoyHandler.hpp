@@ -8,10 +8,13 @@
 class JoyHandler {
     public:
     struct joy_action {
+        bool arm;
+        bool disarm;
+        bool takeoff;
         bool land;
         bool switch_agent;
         bool offboard;
-        bool arm;
+        
         double linear_x;
         double linear_y;
         double linear_z;
@@ -38,16 +41,46 @@ private:
         Axis z;
         Axis yaw;
     } axes_ ;
-    
-    struct Buttons {
-        Buttons() : land(false), switch_agent(false), offboard(false), arm(false) {}
 
-        bool land;
-        bool switch_agent;
-        bool offboard;
-        bool arm;
-    } pressed_buttons_;
+    struct Button {
+        Button() : index(0) {}
+        int index;
+    };
+
+    struct {
+        Button arm;
+        Button disarm;
+        Button offboard;
+        Button follow;
+        Button control;
+    } buttons_;
+
+    // button state for debouncing
+    struct ButtonState {
+        ButtonState() : state(0) {}
+        int state;
+    };
+
+    struct {
+        ButtonState arm;
+        ButtonState disarm;
+        ButtonState offboard;
+        ButtonState follow;
+        ButtonState control;
+        ButtonState switchAgent;
+    } button_state_;
+
+    enum agentState {
+        UNDEFINED = 0,
+        DISARMED,
+        ARMED,
+        OFFBOARD,
+        LANDING,
+        TAKEOFF,
+        GROUNDED
+    };
 
     double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);
+    int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);v 
 };
 #endif

@@ -107,7 +107,7 @@ void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAge
 }
 
 void PX4Teleop::add_agent(const std::string &agent_name) {
-    std::string topic = "/" + agent_name + "/setpoint_velocity/cmd_vel";
+    std::string topic = "/" + agent_name + "/setpoint_velocity/cmd_vel_unfiltered";
     
     auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
             topic,
