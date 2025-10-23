@@ -35,20 +35,20 @@ void JoyHandler::init_parameters() {
     }
 
     // init button mappings
-    this->declare_parameter("arm_button", -1);
-    this->declare_parameter("disarm_button", -1);
-    this->declare_parameter("control_button", -1);
-    this->declare_parameter("follow_setpoint_button", -1);
+    node_->declare_parameter("arm_button", -1);
+    node_->declare_parameter("disarm_button", -1);
+    node_->declare_parameter("control_button", -1);
+    node_->declare_parameter("follow_setpoint_button", -1);
 
-    if (this->get_parameter("arm_button", buttons_.arm.button) &&
-        this->get_parameter("disarm_button", buttons_.disarm.button) &&
-        this->get_parameter("control_button", buttons_.control.button) &&
-        this->get_parameter("follow_setpoint_button", buttons_.follow.button))
+    if (node_->get_parameter("arm_button", buttons_.arm.index) &&
+        node_->get_parameter("disarm_button", buttons_.disarm.index) &&
+        node_->get_parameter("control_button", buttons_.control.index) &&
+        node_->get_parameter("follow_setpoint_button", buttons_.follow.index))
     {
-        RCLCPP_INFO(this->get_logger(), "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d", buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index);
+        RCLCPP_INFO(node_->get_logger(), "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d", buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index);
     }
     else {
-        RCLCPP_ERROR(this->get_logger(), "Button parameters failed to load. Exiting.");
+        RCLCPP_ERROR(node_->get_logger(), "Button parameters failed to load. Exiting.");
         rclcpp::shutdown();
     }
 }
@@ -76,11 +76,11 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
         action.switch_agent = false;
     }
 
-    // check arm button
+    // check arm/takeoff button (arbiter handles takeoff vs arm logic)
     int arm_button_state = get_button(joy_msg, buttons_.arm);
     if (arm_button_state != button_state_.arm.state) {
         if (arm_button_state == 1) {
-            RCLCPP_INFO(node_->get_logger(), "Arm button pressed.");
+            RCLCPP_INFO(node_->get_logger(), "Arm/Takeoff button pressed.");
             action.arm = true;
         } else {
             action.arm = false;
@@ -90,7 +90,7 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
         action.arm = false;
     }
 
-    // check disarm button
+    // check disarm/land button (arbiter handles land vs disarm logic)
     int disarm_button_state = get_button(joy_msg, buttons_.disarm);
     if (disarm_button_state != button_state_.disarm.state) {
         if (disarm_button_state == 1) {
@@ -102,11 +102,23 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
         button_state_.disarm.state = disarm_button_state;
     } else {
         action.disarm = false;
-
-        // TODO: ADDITIONAL LOGIC NEEDED HERE TO DIFFERENTIATE LAND VS DISARM + AUTO LOITER STUFF?
     }
 
-    // TODO: HANDLE OFFBOARD BUTTON PRESS, SWITCH BTWN OFFBOARD AND AUTO LOITER MODES
+    // check offboard button
+    int offboard_button_state = get_button(joy_msg, buttons_.offboard);
+    if (offboard_button_state != button_state_.offboard.state) {
+        if (offboard_button_state == 1) {
+            RCLCPP_INFO(node_->get_logger(), "Offboard button pressed.");
+            action.offboard = true;
+        }
+        else {
+            action.offboard = false;
+        }
+        button_state_.offboard.state = offboard_button_state;
+    } else {
+        action.offboard = false;
+    }
+
     return action;
 }
 
@@ -124,7 +136,7 @@ double JoyHandler::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, con
 
 int JoyHandler::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button) {
     if (button.index < 0 || button.index > (int)joy_msg->buttons.size()-1) {
-        RCLCPP_ERROR(this->get_logger(), "Button %d out of range, joy has %d buttons", button.index, (int)joy_msg->buttons.size());
+        RCLCPP_ERROR(node_->get_logger(), "Button %d out of range, joy has %d buttons", button.index, (int)joy_msg->buttons.size());
         return -1;
     }
 

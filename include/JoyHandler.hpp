@@ -7,14 +7,15 @@
 
 class JoyHandler {
     public:
+
     struct joy_action {
+        // mode switching (buttons)
         bool arm;
         bool disarm;
-        bool takeoff;
-        bool land;
         bool switch_agent;
         bool offboard;
         
+        // movement commands (joystick axes)
         double linear_x;
         double linear_y;
         double linear_z;
@@ -26,6 +27,7 @@ class JoyHandler {
     JoyHandler(rclcpp::Node *parent_node);
 
 private:
+
     rclcpp::Node *node_;
     struct Axis {
         Axis() : axis(0), factor(0.0), offset(0.0) {}
@@ -70,17 +72,8 @@ private:
         ButtonState switchAgent;
     } button_state_;
 
-    enum agentState {
-        UNDEFINED = 0,
-        DISARMED,
-        ARMED,
-        OFFBOARD,
-        LANDING,
-        TAKEOFF,
-        GROUNDED
-    };
-
     double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);
-    int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);v 
+    int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);
+    void init_parameters();
 };
 #endif

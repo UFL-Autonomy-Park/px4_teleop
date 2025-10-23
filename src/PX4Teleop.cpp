@@ -6,10 +6,6 @@ using namespace std::chrono_literals;
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), joy_handler_(this), pose_init_(false) {
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
 
-    // initialize agent ID from namespace (remove leading slash)
-    agent_id_ = std::string(this->get_namespace()).substr(1);
-    setpoint_vel_.header.frame_id = agent_id_;
-
     //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
     if(!initialize_origin_rotation()) rclcpp::shutdown();
 
@@ -45,6 +41,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
         if(agent_iterator_ == cmd_vel_publishers_.end())
             agent_iterator_ = cmd_vel_publishers_.begin();
 
+        setpoint_vel_.header.frame_id = agent_iterator_->first;
         RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first.c_str());
     }
 
@@ -119,6 +116,8 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
     // if this is the first agent, point iterator to beginning of map
     if(cmd_vel_publishers_.size() == 1)
         agent_iterator_ = cmd_vel_publishers_.begin();
+        setpoint_vel_.header.frame_id = agent_name;
+
 }
 
 void PX4Teleop::remove_agent(const std::string &agent_name) {
