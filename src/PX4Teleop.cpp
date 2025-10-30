@@ -3,17 +3,17 @@
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
-PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), joy_handler_(this), pose_init_(false) {
+PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
+                          joy_handler_(this),
+                          pose_init_(false)
+{
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
 
-    //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
-    if(!initialize_origin_rotation()) rclcpp::shutdown();
+    // px4 operates in enu frame, rotation from apark frame needed
+    initialize_origin_rotation();
 
     // initialize PX4 safety library
     px4_safety.initialize(this);
-
-    // publish setpoints at 50Hz
-    setpoint_timer_ = this->create_wall_timer(20ms, std::bind(&PX4Teleop::publish_setpoint, this));
 
     // setup qos profile and subscribers
     qos_profile_.reliable();
@@ -41,7 +41,6 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
         if(agent_iterator_ == cmd_vel_publishers_.end())
             agent_iterator_ = cmd_vel_publishers_.begin();
 
-        setpoint_vel_.header.frame_id = agent_iterator_->first;
         RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first.c_str());
     }
 
@@ -55,11 +54,19 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     //Generate safe velocity command
     geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
 
-    //Convert autonomy park X/Y velocity command to ENU frame
-    setpoint_vel_.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
-    setpoint_vel_.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
-    setpoint_vel_.twist.linear.z = safe_cmd_vel.linear.z;
-    setpoint_vel_.twist.angular.z = safe_cmd_vel.angular.z;
+    //Convert safe autonomy park X/Y velocity command to ENU frame
+    if(!cmd_vel_publishers_.empty()) {
+        geometry_msgs::msg::TwistStamped vel_enu;
+        vel_enu.header.frame_id = agent_iterator_->first;
+        vel_enu.header.stamp = this->get_clock()->now();
+        vel_enu.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
+        vel_enu.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
+        vel_enu.twist.linear.z = safe_cmd_vel.linear.z;
+        vel_enu.twist.angular.z = safe_cmd_vel.angular.z;
+
+        // publish velocity command to px4
+        agent_iterator_->second->publish(vel_enu);
+    }
 }
 
 void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg) {
@@ -68,14 +75,6 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 
     if (!pose_init_) pose_init_ = true;
 }
-
-void PX4Teleop::publish_setpoint() {
-    rclcpp::Time now = this->get_clock()->now();
-    setpoint_vel_.header.stamp = this->get_clock()->now();
-    if(!cmd_vel_publishers_.empty())
-        agent_iterator_->second->publish(setpoint_vel_);
-}
-
 
 void PX4Teleop::connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg) {
     std::set<std::string> updated_agents(connected_agents_msg->agent_namespaces.begin(),connected_agents_msg->agent_namespaces.end());
@@ -116,30 +115,31 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
     // if this is the first agent, point iterator to beginning of map
     if(cmd_vel_publishers_.size() == 1)
         agent_iterator_ = cmd_vel_publishers_.begin();
-        setpoint_vel_.header.frame_id = agent_name;
-
 }
 
 void PX4Teleop::remove_agent(const std::string &agent_name) {
     // check if currently controlling this agent, if so, set iterator to beginning of map
-    if(agent_name == agent_iterator_->first) {
-        cmd_vel_publishers_.erase(agent_name);
-        agent_iterator_ = cmd_vel_publishers_.begin();
+    auto it = cmd_vel_publishers_.find(agent_name);
+    if(it == cmd_vel_publishers_.end()) return;
+    
+    if(it == agent_iterator_) {
+        agent_iterator_ = cmd_vel_publishers_.erase(it);
+        if(agent_iterator_ == cmd_vel_publishers_.end() && !cmd_vel_publishers_.empty())
+            agent_iterator_ = cmd_vel_publishers_.begin();
     }
     else
-        cmd_vel_publishers_.erase(agent_name);
+        cmd_vel_publishers_.erase(it);
 }
 
-bool PX4Teleop::initialize_origin_rotation() {
+void PX4Teleop::initialize_origin_rotation() {
     this->declare_parameter("origin_r", 0.0);
 
     if (this->get_parameter("origin_r", origin_r_)) {
         RCLCPP_INFO(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
         cos_origin_ = cos(origin_r_);
         sin_origin_ = sin(origin_r_);
-        return true;
     } else {
         RCLCPP_ERROR(this->get_logger(), "Park origin rotation not set. Exiting.");
-        return false;
+        rclcpp::shutdown();
     }
 }

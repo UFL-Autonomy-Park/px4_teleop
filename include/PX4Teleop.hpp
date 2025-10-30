@@ -35,8 +35,6 @@ private:
 
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
 
-    rclcpp::TimerBase::SharedPtr setpoint_timer_;
-
     enum LandedState {
         undefined = 0,
         on_ground,
@@ -56,9 +54,6 @@ private:
     std::set<std::string> connected_agents_;
     std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> cmd_vel_publishers_;
 
-    std::string agent_id_;
-    geometry_msgs::msg::TwistStamped setpoint_vel_;
-
     double origin_r_, cos_origin_, sin_origin_;
 
     px4_safety_lib::PX4Safety px4_safety;
@@ -70,8 +65,7 @@ private:
 	void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg);
     void connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg);
 
-	void publish_setpoint();
-    bool initialize_origin_rotation();
+    void initialize_origin_rotation();
 
 public:
     PX4Teleop();
