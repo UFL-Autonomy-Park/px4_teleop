@@ -33,15 +33,15 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
     // process joy message with joy handler (returns struct with actions)
     JoyHandler::joy_action action = joy_handler_.process(joy_msg);
+
+    // handle mode switching
+
+
+    // handle command velocity
     
     // check for switch agent action
     if(action.switch_agent == true && !cmd_vel_publishers_.empty()) {
-        agent_iterator_++;
-
-        if(agent_iterator_ == cmd_vel_publishers_.end())
-            agent_iterator_ = cmd_vel_publishers_.begin();
-
-        RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first.c_str());
+        switch_agent();
     }
 
     // store unfiltered velocity command
@@ -131,6 +131,36 @@ void PX4Teleop::remove_agent(const std::string &agent_name) {
         cmd_vel_publishers_.erase(it);
 }
 
+void PX4Teleop::switch_agent() {
+    agent_iterator_++;
+
+    if(agent_iterator_ == cmd_vel_publishers_.end())
+        agent_iterator_ = cmd_vel_publishers_.begin();
+
+    RCLCPP_INFO(this->get_logger(), "controlling agent: %s", agent_iterator_->first.c_str());
+
+    // update subscriptions, clients, and publishers
+    pose_sub_.reset();
+    state_sub.reset();
+    ext_state_sub_.reset();
+    altitude_sub_.reset();
+    cmd_vel_publisher_.reset();
+    set_mode_client_.reset();
+    arm_client_.reset();
+    takeoff_client_.reset();
+    land_client_.reset();
+
+    // reassign to new agent
+    std::string agent_name = agent_iterator_->first;
+    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/" + agent_name + "/autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
+    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("/" + agent_name + "/state", sub_qos, std::bind(&PX4Teleop::state_callback, this, _1));
+    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Teleop::ext_state_callback, this, _1));
+    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Teleop::altitude_callback, this, _1));
+
+    // TODO redo agent iterator... no longer iterating over map of publishers. Iterating over set of agent names?
+    
+
+}
 void PX4Teleop::initialize_origin_rotation() {
     this->declare_parameter("origin_r", 0.0);
 
@@ -143,3 +173,4 @@ void PX4Teleop::initialize_origin_rotation() {
         rclcpp::shutdown();
     }
 }
+
