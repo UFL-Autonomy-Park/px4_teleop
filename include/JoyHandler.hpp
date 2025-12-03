@@ -14,6 +14,7 @@ class JoyHandler {
         bool disarm;
         bool switch_agent;
         bool offboard;
+		bool takeoff;
         
         // movement commands (joystick axes)
         double linear_x;
@@ -55,6 +56,7 @@ private:
         Button offboard;
         Button follow;
         Button control;
+		Button takeoff;
     } buttons_;
 
     // button state for debouncing
@@ -70,6 +72,7 @@ private:
         ButtonState follow;
         ButtonState control;
         ButtonState switchAgent;
+		ButtonState takeoff;
     } button_state_;
 
     double get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis);

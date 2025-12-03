@@ -14,6 +14,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <sensor_msgs/msg/joy.hpp>
+#include <geographic_msgs/msg/geo_point_stamped.hpp>
 
 // MAVROS Messages & Services
 #include <mavros_msgs/msg/altitude.hpp>
@@ -45,7 +46,6 @@ private:
     // === Handlers & Utilities ===
     JoyHandler joy_handler_;
     px4_safety_lib::PX4Safety px4_safety;
-    rclcpp::QoS qos_profile_{1};
 
     // === Persistent Subscriptions ===
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -56,6 +56,8 @@ private:
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::Altitude>::SharedPtr altitude_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr global_gpos_sub_;
+	rclcpp::Subscription<std_msgs::msg::String>::SharedPtr active_agent_sub_;
 
     // === Dynamic Publishers ===
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_publisher_;
@@ -67,15 +69,21 @@ private:
     rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedPtr land_client_;
 
     // === Agent Management ===
+	std::string px4_id_;
+	std::string active_agent_id_;
     std::set<std::string> connected_agents_;
     std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> cmd_vel_publishers_; // remove, replace with dynamic pub
-    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr>::iterator agent_iterator_; // TODO: iterate over agent list instead of map
+    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr>::iterator agent_iterator; // TODO: iterate over agent list instead of map
 
     // === State Variables ===
     LandedState landed_state_;
     mavros_msgs::msg::State current_state_;
     geometry_msgs::msg::Pose agent_pose_;
+    geographic_msgs::msg::GeoPose global_pose_;
+	geographic_msgs::msg::GeoPose apark_global_pose_;
+	bool gpos_init_;
     bool pose_init_;
+	bool landing_requested_;
 
     // === Origin & Coordinate Transformation ===
     double origin_r_;
@@ -88,9 +96,16 @@ private:
     void state_callback(const mavros_msgs::msg::State::SharedPtr state_msg);
     void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg);
     void connected_agents_callback(const fleet_manager::msg::ConnectedAgents::SharedPtr connected_agents_msg);
+    void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
+	void loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
+	void active_agent_callback(const std_msgs::msg::String::SharedPtr active_agent);
 
     // === Helper Methods ===
-    void initialize_origin_rotation();
+    void init_origin_rotation();
+	void init_subscribers();
+	void init_publishers();
+	void init_service_clients();
+
     void add_agent(const std::string& agent_name);
     void remove_agent(const std::string& agent_name);
     void switch_agent();
