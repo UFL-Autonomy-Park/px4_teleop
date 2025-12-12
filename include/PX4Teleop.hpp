@@ -25,6 +25,12 @@
 #include <mavros_msgs/srv/set_mode.hpp>
 
 // Custom Messages & Libraries
+#include "swarm_interfaces/msg/prepare_mission_command.hpp"
+#include "swarm_interfaces/msg/prepare_mission_response.hpp"
+#include "swarm_interfaces/msg/initiate_takeoff_command.hpp"
+#include "swarm_interfaces/msg/initiate_takeoff_response.hpp"
+#include "swarm_interfaces/msg/start_mission_command.hpp"
+
 #include "fleet_manager/msg/connected_agents.hpp"
 #include <px4_safety_lib/PX4Safety.hpp>
 #include "JoyHandler.hpp"
@@ -90,6 +96,15 @@ private:
     double cos_origin_;
     double sin_origin_;
 
+	// swarm interface
+	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::shared_ptr pmr_pub_;
+	rclcpp::Subscription<swarm_interfaces::msg::PrepareMissionCommand>::shared_ptr pmc_sub_;
+
+	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::shared_ptr itr_pub_;
+	rclcpp::Subscription<swarm_interfaces::msg::InitiateTakeoffCommand>::shared_ptr itc_sub_;
+
+	rclcpp::Subscription<swarm_interfaces::msg::StartMissionCommand>::shared_ptr smc_sub_;
+
     // === Callback Methods ===
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg);
@@ -99,6 +114,9 @@ private:
     void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
 	void loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
 	void active_agent_callback(const std_msgs::msg::String::SharedPtr active_agent);
+	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand pmc_msg);
+	void itc_callback(const swarm_interfaces::msg::InitiateTakeoffCommand itc_msg);
+	void smc_callback(const swarm_interfaces::msg::StartMissionCallback smc_msg);
 
     // === Helper Methods ===
     void init_origin_rotation();

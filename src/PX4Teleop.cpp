@@ -21,10 +21,27 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 }
 
 void PX4Teleop::init_publishers() [
+
+	rclcpp::QoS qos_profile();
+	qos_heartbeat.best_effort();
+	qos_heartbeat.durability_volatile();
+	qos_heartbeat.liveliness(RMW_QOS_POLICY_LIVELINESS_AUTOMATIC);
+
 	cmd_vel_publsher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-            topic,
-            10
+	    "setpoint_velocity/cmd_vel", 
+		10
         );
+
+	pmr_pub_ = this->create_publisher<swarm_interfaces::msg::PrepareMissionResponse>(
+		"prepare_mission/response",
+		qos_profile
+		);
+		
+	itr_pub_ = this->create_publisher<swarm_interfaces::msg::InitiateTakeoffResponse>(
+		"initiate_takeoff/response",
+		qos_profile
+		);
+	
 }
 
 void PX4Teleop::init_subscribers() {
@@ -39,12 +56,59 @@ void PX4Teleop::init_subscribers() {
 	qos_profile.best_effort();
 	qos_profile.durability_volatile();
 
-	joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", qos_profile, std::bind(&PX4Teleop::joy_callback, this, _1));
-    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", qos_profile, std::bind(&PX4Teleop::pose_callback, this, _1));
-	gpos_sub_ = this->create_subscription<geographic_msgs::msg::GeoPoseStamped>("autonomy_park/global_pose", qos_profile, std::bind(&PX4Teleop::apark_global_pose_callback, this, _1));
-	ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", qos_profile, std::bind(&PX4Teleop::ext_state_callback, this, _1));
-    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", qos_profile, std::bind(&PX4Teleop::altitude_callback, this, _1));
-	active_agent_sub_ = this->create_subscription<std_msgs::msg::String>("/fleet_manager/active_agent", qos_profile, std::bind&(PX4Teleop::active_agent_callback, this, _1));
+	pmc_sub_ = this->create_subscription<swarm_interfaces::msg::PrepareMissionCommand>(
+		"fleet_manager/prepare_mission/cmd",
+		qos_profile,
+		std::bind(&PX4Teleop::pmc_callback, this, _1)
+	);
+
+	itc_sub_ = this->create_subscription<swarm_interfaces::msg::InitiateTakeoffCommand>(
+		"/fleet_manager/initiate_takeoff/cmd",
+		qos_profile,
+		std::bind(&PX4Teleop::itc_callback, this, _1)
+	);
+
+	smc_sub_ = this->create_subscription<swarm_interfaces::msg::StartMissionCommand>(
+		"/fleet_manager/start_mission/cmd",
+		qos_profile,
+		std::bind(&PX4Teleop::smc_callback, this, _1)
+	);
+
+	joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
+		"joy",
+		qos_profile,
+		std::bind(&PX4Teleop::joy_callback, this, _1)
+	);
+
+    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+		"autonomy_park/pose",
+		qos_profile,
+		std::bind(&PX4Teleop::pose_callback, this, _1)
+	);
+
+	gpos_sub_ = this->create_subscription<geographic_msgs::msg::GeoPoseStamped>(
+		"autonomy_park/global_pose",
+		qos_profile,
+		std::bind(&PX4Teleop::apark_global_pose_callback, this, _1)
+	);
+
+	ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>(
+		"extended_state",
+		qos_profile,
+		std::bind(&PX4Teleop::ext_state_callback, this, _1)
+	);
+
+    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>(
+		"altitude",
+		qos_profile,
+		std::bind(&PX4Teleop::altitude_callback, this, _1)
+	);
+
+	active_agent_sub_ = this->create_subscription<std_msgs::msg::String>(
+		"/fleet_manager/active_agent",
+		qos_profile,
+		std::bind&(PX4Teleop::active_agent_callback, this, _1)
+	);
 }
 
 void PX4Teleop::init_service_clients() {
@@ -336,7 +400,32 @@ void PX4Teleop::active_agent_callback(const std_msgs::msg::String::SharedPtr act
 	active_agent_id_ = *active_agent
 }
 
+void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand pmc_msg) {
 
+	RCLCPP_INFO(this->get_logger(), "received prepare mission request.");
+
+	// for testing, just directly sending back a true response
+	swarm_interfaces::msg::PrepareMissionResponse pmr_msg;
+	pmr_msg.agent_id = px4_id_;
+	pmr_msg.ready = true;
+	pmr_msg.message = std::string("testing");
+}
+
+void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand itc_msg) {
+
+	RCLCPP_INFO(this->get_logger(), "received initiate takeoff request.");
+
+	swarm_interfaces::msg::InitiateTakeoffResponse itr_msg;
+	itr_msg.agent_id = px4_id_;
+	itr_msg.success = true;
+	itr_msg.message = "testing"
+
+}
+
+void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand smc_msg) {
+
+	RCLCPP_INFO(this->get_logger(), "received start mission request.");
+}
 
 
 
