@@ -16,6 +16,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(fleet_manager REQUIRED)
+find_package(swarm_interfaces REQUIRED)
 
 find_package(px4_safety_lib REQUIRED)
 
@@ -40,6 +41,7 @@ ament_target_dependencies(
     tf2_geometry_msgs
     px4_safety_lib
     fleet_manager
+	swarm_interfaces
 )
 
 target_include_directories(

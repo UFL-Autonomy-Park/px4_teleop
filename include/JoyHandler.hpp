@@ -11,6 +11,7 @@ class JoyHandler {
     struct joy_action {
         // mode switching (buttons)
         bool arm;
+		bool land;
         bool disarm;
         bool switch_agent;
         bool offboard;
