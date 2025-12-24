@@ -39,7 +39,7 @@ public:
     PX4Teleop();
 
 private:
-    // === Enums ===
+
     enum LandedState {
         undefined = 0,
         on_ground,
@@ -48,15 +48,22 @@ private:
         landing
     };
 
+	struct neighborState {
+		geometry_msgs::msg::Pose pose;
+		geometry_msgs::msg::Twist velocity;
+		mavros_msgs::msg::State state;
+		LandedState landed_state;
+		rclcpp::Time last_update;
+	};
+
     // === Handlers & Utilities ===
     JoyHandler joy_handler_;
     px4_safety_lib::PX4Safety px4_safety;
 
-    // === Persistent Subscriptions ===
+
+	// pub subs
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<swarm_interfaces::msg::ConnectedAgents>::SharedPtr connected_agents_sub_;
-
-    // === Dynamic Subscriptions ===
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
@@ -64,7 +71,6 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gpos_sub_;
 	rclcpp::Subscription<std_msgs::msg::String>::SharedPtr active_agent_sub_;
 
-    // === Dynamic Publishers ===
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_publisher_;
 
     // === Service Clients ===
@@ -77,8 +83,15 @@ private:
 	std::string px4_id_;
 	std::string active_agent_id_;
     std::set<std::string> connected_agents_;
-    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> cmd_vel_publishers_; // remove, replace with dynamic pub
-    std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr>::iterator agent_iterator_; // TODO: iterate over agent list instead of map
+	//
+	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr> neighbor_pose_subscriptions_;
+	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> neighbor_velocity_subscriptions_;
+	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> neighbor_state_subscriptions_;
+	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr> neighbor_ext_state_subscriptions_;
+	std::map<std::string, geometry_msgs::msg::PoseStamped> neighbors_pose_;
+	std::map<std::string, geometry_msgs::msg::TwistStamped> neighbors_velocity_;
+	std::map<std::string, mavros_msgs::msg::State> neighbors_state_;
+	std::map<std::string, mavros_msgs::msg::ExtendedState> neighbor_ext_state_;
 
     // === State Variables ===
     LandedState landed_state_;
@@ -99,16 +112,14 @@ private:
     double cos_origin_;
     double sin_origin_;
 
-	// swarm interface
+	// mission pub/sub
 	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
-	rclcpp::Subscription<swarm_interfaces::msg::PrepareMissionCommand>::SharedPtr pmc_sub_;
-
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::SharedPtr itr_pub_;
+	rclcpp::Subscription<swarm_interfaces::msg::PrepareMissionCommand>::SharedPtr pmc_sub_;
 	rclcpp::Subscription<swarm_interfaces::msg::InitiateTakeoffCommand>::SharedPtr itc_sub_;
-
 	rclcpp::Subscription<swarm_interfaces::msg::StartMissionCommand>::SharedPtr smc_sub_;
 
-    // === Callback Methods ===
+	// agent callbacks
 	void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr altitude_msg);
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg);
@@ -118,9 +129,17 @@ private:
     void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
 	void loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
 	void active_agent_callback(const std_msgs::msg::String::SharedPtr active_agent);
+
+	// mission callbacks
 	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg);
 	void itc_callback(const swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg);
 	void smc_callback(const swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg);
+
+	// neighbor callbacks
+	void neighbor_pose_callback(const geometry_msgs::msg::Pose::SharedPtr neighbor_pose_msg);
+	void neighbor_velocity_callback(const geometry_msgs::msg::Twist::SharedPtr neighbor_vel_msg);
+	void neighbor_state_callback(const mavros_msgs::msg::State::SharedPtr neighbor_state_msg);
+	void neighbor_ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr neighbor_ext_state_msg);
 
     // === Helper Methods ===
     void init_origin_rotation();
