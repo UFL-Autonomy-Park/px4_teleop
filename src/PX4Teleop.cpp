@@ -274,11 +274,6 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 	qos_profile.durability_volatile();
 
     std::string namespace = "/" + agent_name;
-    
-    auto publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-            namespace + "/setpoint_velocity/cmd_vel_unfiltered",
-            10
-        );
 	
 	auto neighbor_pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
 		namespace + "/autonomy_park/pose",
@@ -482,15 +477,7 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
     }
 }
 
-
-void neighbor_velocity_callback(const geometry_msgs::msg::Twist::SharedPtr neighbor_vel_msg) {
-	return;
+float compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2) {
+	return std::hypotf(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z); 
 }
 
-void neighbor_state_callback(const mavros_msgs::msg::State::SharedPtr neighbor_state_msg) {
-	return;
-}
-
-void neighbor_ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr neighbor_ext_state_msg) {
-	return;
-}

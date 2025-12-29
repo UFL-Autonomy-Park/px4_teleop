@@ -129,6 +129,7 @@ private:
     void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
 	void loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
 	void active_agent_callback(const std_msgs::msg::String::SharedPtr active_agent);
+	void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
 
 	// mission callbacks
 	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg);
@@ -141,19 +142,17 @@ private:
 	void neighbor_state_callback(const mavros_msgs::msg::State::SharedPtr neighbor_state_msg);
 	void neighbor_ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr neighbor_ext_state_msg);
 
-    // === Helper Methods ===
-    void init_origin_rotation();
+    // initialization
+	void init_origin_rotation();
 	void init_subscribers();
 	void init_publishers();
 	void init_service_clients();
+
 	void send_tol_request(bool takeoff);
 	double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
-	void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
-
     void add_agent(const std::string& agent_name);
     void remove_agent(const std::string& agent_name);
-    void switch_agent();
-
+	double compute_distance(const geometry_msgs::msg::Pose p1, const geometry_msgs::msg::Pose p2);
 };
 
 #endif // PX4_TELEOP_HPP
