@@ -84,14 +84,14 @@ private:
 	std::string active_agent_id_;
     std::set<std::string> connected_agents_;
 	//
-	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr> neighbor_pose_subscriptions_;
-	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> neighbor_velocity_subscriptions_;
+	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> neighbor_pose_subscriptions_;
+	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr> neighbor_velocity_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> neighbor_state_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr> neighbor_ext_state_subscriptions_;
 	std::map<std::string, geometry_msgs::msg::PoseStamped> neighbors_pose_;
 	std::map<std::string, geometry_msgs::msg::TwistStamped> neighbors_velocity_;
 	std::map<std::string, mavros_msgs::msg::State> neighbors_state_;
-	std::map<std::string, mavros_msgs::msg::ExtendedState> neighbor_ext_state_;
+	std::map<std::string, mavros_msgs::msg::ExtendedState> neighbors_ext_state_;
 
     // === State Variables ===
     LandedState landed_state_;
@@ -152,7 +152,7 @@ private:
 	double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
     void add_agent(const std::string& agent_name);
     void remove_agent(const std::string& agent_name);
-	double compute_distance(const geometry_msgs::msg::Pose p1, const geometry_msgs::msg::Pose p2);
+	float compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2);
 };
 
 #endif // PX4_TELEOP_HPP

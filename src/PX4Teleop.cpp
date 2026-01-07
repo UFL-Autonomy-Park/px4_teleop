@@ -5,7 +5,8 @@ using namespace std::chrono_literals;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
                           joy_handler_(this),
-                          pose_init_(false),
+                          gpos_init_(false),
+						  pose_init_(false),
                           landing_requested_(false),
 						  sim_mode_(true),
 						  alt_init_(false)
@@ -116,6 +117,7 @@ void PX4Teleop::init_subscribers() {
 			global_pose_.position.latitude = msg->latitude;
 			global_pose_.position.longitude = msg->longitude;
 			global_pose_.position.altitude = msg->altitude;
+			if(!gpos_init_) gpos_init_ = true;
 		}
 	);
 
@@ -273,55 +275,55 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 	qos_profile.best_effort();
 	qos_profile.durability_volatile();
 
-    std::string namespace = "/" + agent_name;
+    std::string agent_namespace = "/" + agent_name;
 	
 	auto neighbor_pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-		namespace + "/autonomy_park/pose",
+		agent_namespace + "/autonomy_park/pose",
 		qos_profile,
-		[this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+		[this, agent_namespace, agent_name](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
 
 			neighbors_pose_.insert_or_assign(agent_name, *msg);
 		}
-	)
+	);
 
 	auto neighbor_velocity_sub = this->create_subscription<geometry_msgs::msg::TwistStamped>(
-		namespace + "/setpoint_velocity/cmd_vel",
+		agent_namespace + "/setpoint_velocity/cmd_vel",
 		qos_profile,
-		[this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+		[this, agent_namespace, agent_name](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
 
 			neighbors_velocity_.insert_or_assign(agent_name, *msg);
 		}
-	)
+	);
 
 	auto neighbor_state_sub = this->create_subscription<mavros_msgs::msg::State>(
-		namespace + "/state",
+		agent_namespace + "/state",
 		qos_profile,
-		[this](const mavros_msgs::msg::State::SharedPtr msg) {
+		[this, agent_namespace, agent_name](const mavros_msgs::msg::State::SharedPtr msg) {
 
 			neighbors_state_.insert_or_assign(agent_name, *msg);
 		}
-	)
+	);
 
 	auto neighbor_ext_state_sub = this->create_subscription<mavros_msgs::msg::ExtendedState>(
-		namespace + "/extended_state",
+		agent_namespace + "/extended_state",
 		qos_profile,
-		[this](const mavros_msgs::msg::ExtendedState::SharedPtr msg) {
+		[this, agent_namespace, agent_name](const mavros_msgs::msg::ExtendedState::SharedPtr msg) {
 
 			neighbors_ext_state_.insert_or_assign(agent_name, *msg);
 		}
-	)
+	);
 
-	neighbor_pose_subscriptions_.instert({agent_name, neighbor_pose_sub});
-	neighbor_velocity_subscriptions_.insert({agent_name, neighbor_pose_sub});
-	neighbor_state_subscriptions_.insert({agent_name, neighbor_pose_sub});	
-	neighbor_ext_state_subscriptions_.insert(agent_name, neighbor_pose_sub});
+	neighbor_pose_subscriptions_.insert({agent_name, neighbor_pose_sub});
+	neighbor_velocity_subscriptions_.insert({agent_name, neighbor_velocity_sub});
+	neighbor_state_subscriptions_.insert({agent_name, neighbor_state_sub});	
+	neighbor_ext_state_subscriptions_.insert({agent_name, neighbor_ext_state_sub});
 }
 
 void PX4Teleop::remove_agent(const std::string &agent_name) {
 	neighbor_pose_subscriptions_.erase(agent_name);
 	neighbor_velocity_subscriptions_.erase(agent_name);
 	neighbor_state_subscriptions_.erase(agent_name);
-	neighbor_ext_state_subscriptions_.insert(agent_name);
+	neighbor_ext_state_subscriptions_.erase(agent_name);
 	connected_agents_.erase(agent_name);
 }
 
@@ -427,6 +429,8 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 
 	RCLCPP_INFO(this->get_logger(), "received prepare mission request.");
 
+	// load mission parameters, do pre-flight checks
+	
 	// for testing, just directly sending back a true response
 	swarm_interfaces::msg::PrepareMissionResponse pmr_msg;
 	pmr_msg.agent_id = px4_id_;
@@ -440,9 +444,24 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 
 	RCLCPP_INFO(this->get_logger(), "received initiate takeoff request.");
 
+	// check takeoff conditions
+	
+	// 1. valid takeoff location
+	bool position_lock = false;
+	if(pose_init_ && gpos_init_ && alt_init_) {
+		position_lock = true;
+	}
+	
+	// 2. valid agent spacing
+	bool valid_spacing = true;
+	for (auto agent : neighbors_pose_) {
+		if (compute_distance(apark_pose_.position, agent.second.pose.position) < 2.0f)
+			valid_spacing = false;
+	}
+
 	swarm_interfaces::msg::InitiateTakeoffResponse itr_msg;
 	itr_msg.agent_id = px4_id_;
-	itr_msg.success = true;
+	itr_msg.success = valid_spacing && position_lock;
 	itr_msg.message = "testing";
 	itr_pub_->publish(itr_msg);
 
@@ -451,6 +470,9 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg) {
 
 	RCLCPP_INFO(this->get_logger(), "received start mission request.");
+	
+	// for testing, just takeoff and hover
+	send_tol_request(true);
 }
 
 void PX4Teleop::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
@@ -477,7 +499,7 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
     }
 }
 
-float compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2) {
-	return std::hypotf(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z); 
+float PX4Teleop::compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2) {
+	return sqrtf(std::pow(p1.x-p2.x, 2) + std::pow(p1.y-p2.y, 2) + std::pow(p1.z-p2.z, 2));
 }
 
