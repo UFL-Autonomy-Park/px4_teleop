@@ -17,7 +17,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
     px4_safety.initialize(this);
 	init_publishers();
 	init_subscribers();
-	//init_service_clients();
+	init_service_clients();
     init_origin_rotation();
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
@@ -58,13 +58,13 @@ void PX4Teleop::init_subscribers() {
 	qos_profile.durability_volatile();
 
     connected_agents_sub_ = this->create_subscription<swarm_interfaces::msg::ConnectedAgents>(
-		"/connected_agents",
+		"/fleet_manager/connected_agents",
 		qos_profile,
 		std::bind(&PX4Teleop::connected_agents_callback, this, _1)
 	);
     
 	pmc_sub_ = this->create_subscription<swarm_interfaces::msg::PrepareMissionCommand>(
-		"fleet_manager/prepare_mission/cmd",
+		"/fleet_manager/prepare_mission/cmd",
 		qos_profile,
 		std::bind(&PX4Teleop::pmc_callback, this, _1)
 	);
@@ -82,7 +82,7 @@ void PX4Teleop::init_subscribers() {
 	);
 
 	joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
-		"joy",
+		"/joy",
 		qos_profile,
 		std::bind(&PX4Teleop::joy_callback, this, _1)
 	);
@@ -195,6 +195,10 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
     // handle mode switching
 	
+	// handle arm
+	if (action.arm == true) {
+		send_arming_request(true);	
+	}
 	// handle takeoff
 	if(action.takeoff == true && landed_state_ == on_ground) {
 		send_tol_request(true);
@@ -258,12 +262,14 @@ void PX4Teleop::connected_agents_callback(const swarm_interfaces::msg::Connected
 
     for(const auto& agent: added_agents) {
         add_agent(agent);
-        RCLCPP_INFO(this->get_logger(), "Added cmd_vel publisher for agent: %s", agent.c_str());
+
+		if (agent != px4_id_)
+			RCLCPP_INFO(this->get_logger(), "Added neighbor: %s", agent.c_str());
     }
 
     for(const auto& agent: removed_agents) {
         remove_agent(agent);
-        RCLCPP_INFO(this->get_logger(), "Removed cmd_vel publisher for agent: %s", agent.c_str());
+        RCLCPP_INFO(this->get_logger(), "Removed neighbor: %s", agent.c_str());
     }
 
     connected_agents_ = updated_agents;
@@ -282,7 +288,7 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		qos_profile,
 		[this, agent_namespace, agent_name](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
 
-			neighbors_pose_.insert_or_assign(agent_name, *msg);
+			neighbor_poses_.insert_or_assign(agent_name, *msg);
 		}
 	);
 
@@ -291,7 +297,7 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		qos_profile,
 		[this, agent_namespace, agent_name](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
 
-			neighbors_velocity_.insert_or_assign(agent_name, *msg);
+			neighbor_velocities_.insert_or_assign(agent_name, *msg);
 		}
 	);
 
@@ -300,7 +306,7 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		qos_profile,
 		[this, agent_namespace, agent_name](const mavros_msgs::msg::State::SharedPtr msg) {
 
-			neighbors_state_.insert_or_assign(agent_name, *msg);
+			neighbor_states_.insert_or_assign(agent_name, *msg);
 		}
 	);
 
@@ -309,7 +315,7 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		qos_profile,
 		[this, agent_namespace, agent_name](const mavros_msgs::msg::ExtendedState::SharedPtr msg) {
 
-			neighbors_ext_state_.insert_or_assign(agent_name, *msg);
+			neighbor_ext_states_.insert_or_assign(agent_name, *msg);
 		}
 	);
 
@@ -324,6 +330,10 @@ void PX4Teleop::remove_agent(const std::string &agent_name) {
 	neighbor_velocity_subscriptions_.erase(agent_name);
 	neighbor_state_subscriptions_.erase(agent_name);
 	neighbor_ext_state_subscriptions_.erase(agent_name);
+	neighbor_poses_.erase(agent_name);
+	neighbor_velocities_.erase(agent_name);
+	neighbor_states_.erase(agent_name);
+	neighbor_ext_states_.erase(agent_name);
 	connected_agents_.erase(agent_name);
 }
 
@@ -370,7 +380,7 @@ void PX4Teleop::send_tol_request(bool takeoff) {
         tol_request->yaw = quat_to_yaw(takeoff_pose.orientation);
         tol_request->latitude = takeoff_pose.position.latitude;
         tol_request->longitude = takeoff_pose.position.longitude;
-        tol_request->altitude = takeoff_pose.position.altitude + 2.0; // altitude in amsl
+        tol_request->altitude = takeoff_pose.position.altitude + takeoff_height_; // altitude in amsl
 
         auto tol_result = takeoff_client_->async_send_request(tol_request, std::bind(&PX4Teleop::tol_response_callback, this, _1));
     } else {
@@ -429,6 +439,8 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 
 	RCLCPP_INFO(this->get_logger(), "received prepare mission request.");
 
+	mission_id_ = pmc_msg->mission_id;
+
 	// load mission parameters, do pre-flight checks
 	
 	// for testing, just directly sending back a true response
@@ -444,6 +456,8 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 
 	RCLCPP_INFO(this->get_logger(), "received initiate takeoff request.");
 
+	takeoff_height_ = itc_msg->takeoff_height;
+
 	// check takeoff conditions
 	
 	// 1. valid takeoff location
@@ -454,8 +468,8 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 	
 	// 2. valid agent spacing
 	bool valid_spacing = true;
-	for (auto agent : neighbors_pose_) {
-		if (compute_distance(apark_pose_.position, agent.second.pose.position) < 2.0f)
+	for (auto agent : neighbor_poses_) {
+		if (compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_)
 			valid_spacing = false;
 	}
 
@@ -470,6 +484,8 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg) {
 
 	RCLCPP_INFO(this->get_logger(), "received start mission request.");
+
+	mission_start_time_ = smc_msg->timestamp;
 	
 	// for testing, just takeoff and hover
 	send_tol_request(true);
@@ -499,7 +515,39 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
     }
 }
 
-float PX4Teleop::compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2) {
-	return sqrtf(std::pow(p1.x-p2.x, 2) + std::pow(p1.y-p2.y, 2) + std::pow(p1.z-p2.z, 2));
+void PX4Teleop::send_arming_request(bool arm) {
+    bool valid_request = false;
+    if (arm) {
+        if (!current_state_.armed) {
+            RCLCPP_WARN(this->get_logger(), "Sending arm request.");
+            valid_request = true;
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Device already armed - arm request ignored.");
+            return;
+        }
+    } else {
+        if (current_state_.armed) {
+            RCLCPP_WARN(this->get_logger(), "Sending disarm request.");
+            valid_request = true;
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Device already disarmed - disarm request ignored.");
+            return;
+        }
+    }
+
+    if (valid_request) {
+        auto arm_request = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
+        arm_request->value = arm;
+        auto arm_result = arm_client_->async_send_request(arm_request, std::bind(&PX4Teleop::arm_response_callback, this, _1));
+    }
 }
 
+void PX4Teleop::arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future) {
+    auto response = future.get();
+
+    if (response->success) {
+        RCLCPP_INFO(this->get_logger(), "Arm/disarm request succeeded. Result=%d", response->result);
+    } else {
+        RCLCPP_ERROR(this->get_logger(), "Arm/disarm request failed!");
+    }
+}

@@ -88,10 +88,10 @@ private:
 	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr> neighbor_velocity_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> neighbor_state_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr> neighbor_ext_state_subscriptions_;
-	std::map<std::string, geometry_msgs::msg::PoseStamped> neighbors_pose_;
-	std::map<std::string, geometry_msgs::msg::TwistStamped> neighbors_velocity_;
-	std::map<std::string, mavros_msgs::msg::State> neighbors_state_;
-	std::map<std::string, mavros_msgs::msg::ExtendedState> neighbors_ext_state_;
+	std::map<std::string, geometry_msgs::msg::PoseStamped> neighbor_poses_;
+	std::map<std::string, geometry_msgs::msg::TwistStamped> neighbor_velocities_;
+	std::map<std::string, mavros_msgs::msg::State> neighbor_states_;
+	std::map<std::string, mavros_msgs::msg::ExtendedState> neighbor_ext_states_;
 
     // === State Variables ===
     LandedState landed_state_;
@@ -112,6 +112,11 @@ private:
     double cos_origin_;
     double sin_origin_;
 
+	// mission parameters
+	std::string mission_id_;
+	float takeoff_height_;
+	uint32_t mission_start_time_;
+	float minimum_takeoff_separation_;
 	// mission pub/sub
 	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::SharedPtr itr_pub_;
@@ -130,6 +135,7 @@ private:
 	void loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
 	void active_agent_callback(const std_msgs::msg::String::SharedPtr active_agent);
 	void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
+	void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
 
 	// mission callbacks
 	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg);
@@ -152,7 +158,12 @@ private:
 	double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
     void add_agent(const std::string& agent_name);
     void remove_agent(const std::string& agent_name);
-	float compute_distance(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2);
+	void send_arming_request(bool arm);
+
+    inline float compute_horizontal_separation(const geometry_msgs::msg::Point p1, const geometry_msgs::msg::Point p2)
+	{
+		return std::hypot(p1.x - p2.x, p1.y - p2.y);
+	}
 };
 
 #endif // PX4_TELEOP_HPP
