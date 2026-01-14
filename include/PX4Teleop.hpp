@@ -5,6 +5,8 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
@@ -29,6 +31,8 @@
 #include "swarm_interfaces/msg/prepare_mission_response.hpp"
 #include "swarm_interfaces/msg/initiate_takeoff_command.hpp"
 #include "swarm_interfaces/msg/initiate_takeoff_response.hpp"
+#include "swarm_interfaces/msg/initiate_land_command.hpp"
+#include "swarm_interfaces/msg/initiate_land_response.hpp"
 #include "swarm_interfaces/msg/start_mission_command.hpp"
 #include "swarm_interfaces/msg/connected_agents.hpp"
 #include <px4_safety_lib/PX4Safety.hpp>
@@ -106,6 +110,8 @@ private:
 	bool landing_requested_;
 	bool sim_mode_;
 	bool alt_init_;
+	bool mission_takeoff_requested_;
+	bool mission_land_requested_;
 
     // === Origin & Coordinate Transformation ===
     double origin_r_;
@@ -115,13 +121,16 @@ private:
 	// mission parameters
 	std::string mission_id_;
 	float takeoff_height_;
+	float land_height_;
 	uint32_t mission_start_time_;
 	float minimum_takeoff_separation_;
 	// mission pub/sub
 	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::SharedPtr itr_pub_;
+	rclcpp::Publisher<swarm_interfaces::msg::InitiateLandResponse>::SharedPtr ilr_pub_;
 	rclcpp::Subscription<swarm_interfaces::msg::PrepareMissionCommand>::SharedPtr pmc_sub_;
 	rclcpp::Subscription<swarm_interfaces::msg::InitiateTakeoffCommand>::SharedPtr itc_sub_;
+	rclcpp::Subscription<swarm_interfaces::msg::InitiateLandCommand>::SharedPtr ilc_sub_;
 	rclcpp::Subscription<swarm_interfaces::msg::StartMissionCommand>::SharedPtr smc_sub_;
 
 	// agent callbacks
@@ -140,6 +149,7 @@ private:
 	// mission callbacks
 	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg);
 	void itc_callback(const swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg);
+	void ilc_callback(const swarm_interfaces::msg::InitiateLandCommand::SharedPtr ilc_msg);
 	void smc_callback(const swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg);
 
 	// neighbor callbacks

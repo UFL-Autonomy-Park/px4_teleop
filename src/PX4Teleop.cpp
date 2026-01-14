@@ -4,12 +4,14 @@ using std::placeholders::_1;
 using namespace std::chrono_literals;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
-                          joy_handler_(this),
-                          gpos_init_(false),
-						  pose_init_(false),
-                          landing_requested_(false),
-						  sim_mode_(true),
-						  alt_init_(false)
+							joy_handler_(this),
+							gpos_init_(false),
+							pose_init_(false),
+							landing_requested_(false),
+							sim_mode_(true),
+							alt_init_(false),
+							mission_takeoff_requested_(false),
+							mission_land_requested_(false)
 {
 
     px4_id_ = std::string(this->get_namespace()).substr(1);
@@ -44,6 +46,11 @@ void PX4Teleop::init_publishers() {
 		"/fleet_manager/initiate_takeoff/response",
 		qos_profile
 		);
+
+	ilr_pub_ = this->create_publisher<swarm_interfaces::msg::InitiateLandResponse>(
+		"/fleet_manager/initiate_land/response",
+		qos_profile
+		);
 	
 }
 
@@ -73,6 +80,12 @@ void PX4Teleop::init_subscribers() {
 		"/fleet_manager/initiate_takeoff/cmd",
 		qos_profile,
 		std::bind(&PX4Teleop::itc_callback, this, _1)
+	);
+
+	ilc_sub_ = this->create_subscription<swarm_interfaces::msg::InitiateLandCommand>(
+		"/fleet_manager/initiate_land/cmd",
+		qos_profile,
+		std::bind(&PX4Teleop::ilc_callback, this, _1)
 	);
 
 	smc_sub_ = this->create_subscription<swarm_interfaces::msg::StartMissionCommand>(
@@ -345,6 +358,7 @@ void PX4Teleop::state_callback(const mavros_msgs::msg::State::SharedPtr state_ms
 	else if (!state_msg->armed && current_state_.armed) {
         RCLCPP_WARN(this->get_logger(), "Disarmed");
     }
+
     if (state_msg->mode == "AUTO.LOITER" && current_state_.mode != "AUTO.LOITER") {
         RCLCPP_WARN(this->get_logger(), "Loiter mode enabled.");
         
@@ -353,8 +367,19 @@ void PX4Teleop::state_callback(const mavros_msgs::msg::State::SharedPtr state_ms
             send_tol_request(false);
             landing_requested_ = false;
         }
-    } else if (state_msg->mode == "OFFBOARD" && current_state_.mode != "OFFBOARD") {
-        RCLCPP_WARN(this->get_logger(), "Offboard mode enabled.");
+    } 
+	else if (state_msg->mode == "OFFBOARD" && current_state_.mode != "OFFBOARD") {
+
+		// if on ground when offboard is enabled, disable it
+		if (landed_state_ == on_ground) {
+			auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+			request->custom_mode = "AUTO.LOITER";
+			auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1));
+		}
+
+		else {
+			RCLCPP_WARN(this->get_logger(), "Offboard mode enabled.");
+		}
     }
 
     current_state_ = *state_msg;
@@ -375,12 +400,12 @@ void PX4Teleop::send_tol_request(bool takeoff) {
 	geographic_msgs::msg::GeoPose takeoff_pose = global_pose_; 
 
     if (takeoff) {
-        RCLCPP_WARN(this->get_logger(), "Sending takeoff request.");
+        RCLCPP_WARN(this->get_logger(), "Sending takeoff request with altitude %.2f, takeoff_height: %.2f", altitude_amsl_, takeoff_height_);
         
         tol_request->yaw = quat_to_yaw(takeoff_pose.orientation);
         tol_request->latitude = takeoff_pose.position.latitude;
         tol_request->longitude = takeoff_pose.position.longitude;
-        tol_request->altitude = takeoff_pose.position.altitude + takeoff_height_; // altitude in amsl
+        tol_request->altitude = altitude_amsl_ - apark_pose_.position.z + takeoff_height_;
 
         auto tol_result = takeoff_client_->async_send_request(tol_request, std::bind(&PX4Teleop::tol_response_callback, this, _1));
     } else {
@@ -452,14 +477,25 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 
 }
 
+void PX4Teleop::ilc_callback(swarm_interfaces::msg::InitiateLandCommand::SharedPtr ilc_msg) {
+	land_height_ = ilc_msg->land_height;
+
+	bool valid_spacing = true;
+	for (auto agent : neighbor_poses_) {
+		if (compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_)
+			valid_spacing = false;
+	}
+
+	mission_land_requested_ = true;
+	send_tol_request(false);
+
+}
 void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg) {
 
-	RCLCPP_INFO(this->get_logger(), "received initiate takeoff request.");
+	RCLCPP_INFO(this->get_logger(), "received initiate takeoff request with height: %.2f.", itc_msg->takeoff_height);
 
 	takeoff_height_ = itc_msg->takeoff_height;
 
-	// check takeoff conditions
-	
 	// 1. valid takeoff location
 	bool position_lock = false;
 	if(pose_init_ && gpos_init_ && alt_init_) {
@@ -469,15 +505,24 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 	// 2. valid agent spacing
 	bool valid_spacing = true;
 	for (auto agent : neighbor_poses_) {
-		if (compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_)
+
+		float dist = compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_;
+
+		if (compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_) {
+			RCLCPP_INFO(this->get_logger(), "Invalid spacing with agent %s: %.2f", agent.first.c_str(), dist);
 			valid_spacing = false;
+		}
+
+		else {
+			RCLCPP_INFO(this->get_logger(), "Safe distance from agent %s: %.2f", agent.first.c_str(), dist);
+		}
 	}
 
-	swarm_interfaces::msg::InitiateTakeoffResponse itr_msg;
-	itr_msg.agent_id = px4_id_;
-	itr_msg.success = valid_spacing && position_lock;
-	itr_msg.message = "testing";
-	itr_pub_->publish(itr_msg);
+	if (position_lock && valid_spacing) {
+		mission_takeoff_requested_ = true;
+		send_arming_request(true);
+	}
+
 
 }
 
@@ -486,15 +531,12 @@ void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedP
 	RCLCPP_INFO(this->get_logger(), "received start mission request.");
 
 	mission_start_time_ = smc_msg->timestamp;
-	
-	// for testing, just takeoff and hover
-	send_tol_request(true);
 }
 
 void PX4Teleop::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
     //Gazebo sim uses monotonic altitude, physical drone uses local tied to bottom_clearance via lidar
     if (sim_mode_) {
-        apark_pose_.position.z = msg->monotonic;
+        apark_pose_.position.z = msg->local;
     } else {
         apark_pose_.position.z = msg->local;
     }
@@ -509,7 +551,35 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
     auto response = future.get();
 
     if (response->success) {
-        RCLCPP_INFO(this->get_logger(), "TOL request succeeded. Result=%d", response->result);
+
+		if (mission_takeoff_requested_) {
+
+			RCLCPP_INFO(this->get_logger(), "Mission TOL request succeeded. Result=%d", response->result);
+
+			swarm_interfaces::msg::InitiateTakeoffResponse itr_msg;
+			itr_msg.agent_id = px4_id_;
+			itr_msg.success = true;
+			itr_msg.message = "testing";
+			itr_pub_->publish(itr_msg);
+
+			mission_takeoff_requested_ = false;
+		}
+
+		else if (mission_land_requested_) {
+			
+			swarm_interfaces::msg::InitiateLandResponse ilr_msg;
+			ilr_msg.agent_id = px4_id_;
+			ilr_msg.success = true;
+			ilr_msg.message = "testing";
+			ilr_pub_->publish(ilr_msg);
+
+			mission_land_requested_ = false;
+
+		}
+
+		else {
+			RCLCPP_INFO(this->get_logger(), "TOL request succeeded. Result=%d", response->result);
+		}
     } else {
         RCLCPP_ERROR(this->get_logger(), "TOL request failed!");
     }
@@ -545,9 +615,22 @@ void PX4Teleop::send_arming_request(bool arm) {
 void PX4Teleop::arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future) {
     auto response = future.get();
 
-    if (response->success) {
-        RCLCPP_INFO(this->get_logger(), "Arm/disarm request succeeded. Result=%d", response->result);
-    } else {
+
+	if (response->success) {
+
+		if (mission_takeoff_requested_) {
+
+			RCLCPP_INFO(this->get_logger(), "Mission Arm request succeeded. Result=%d", response->result);
+			std::this_thread::sleep_for(2000ms);
+			send_tol_request(true);
+		}
+		
+		else {
+			RCLCPP_INFO(this->get_logger(), "Arm/disarm request succeeded. Result=%d", response->result);
+		}
+    } 
+
+	else {
         RCLCPP_ERROR(this->get_logger(), "Arm/disarm request failed!");
     }
 }
