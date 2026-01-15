@@ -100,6 +100,12 @@ void PX4Teleop::init_subscribers() {
 		std::bind(&PX4Teleop::joy_callback, this, _1)
 	);
 
+	state_sub_ = this->create_subscription<mavros_msgs::msg::State>(
+		"state",
+		qos_profile,
+		std::bind(&PX4Teleop::state_callback, this ,_1)
+	);
+
 	ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>(
 		"extended_state",
 		qos_profile,
@@ -208,32 +214,65 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
     // handle mode switching
 	
-	// handle arm
+	// handle arm/takeoff
 	if (action.arm == true) {
-		send_arming_request(true);	
-	}
-	// handle takeoff
-	if(action.takeoff == true && landed_state_ == on_ground) {
-		send_tol_request(true);
-	}
-
-	// handle land
-	if(action.land == true && current_state_.armed) {
-		RCLCPP_INFO(this->get_logger(), "Request to land sent.");
-
-		if(current_state_.mode == "AUTO.LOITER"){ 
-			send_tol_request(false);
+		if (current_state_.armed && landed_state_ == on_ground) {
+			send_tol_request(true);
 		}
 		else {
-			landing_requested_ = true;
+			send_arming_request(true);
+		}
+	}
 
-			auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-			request->custom_mode = "AUTO.LOITER";
-			auto set_mode_request = set_mode_client_->async_send_request(
-				request,
-				std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1)
-			);
-        }
+	// handle disarm/land
+	if (action.disarm == true) {
+		if (landed_state_ == on_ground) {
+			send_arming_request(false);
+		}
+		else {
+			if (current_state_.mode == "AUTO.LOITER") {
+				RCLCPP_INFO(this->get_logger(), "received command to send landing request");
+				send_tol_request(false);
+			}
+			else {
+				RCLCPP_INFO(this->get_logger(), "drone in air, sending loiter request before landing, mode: %s", current_state_.mode.c_str());
+				landing_requested_ = true;
+
+				auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+				request->custom_mode = "AUTO.LOITER";
+				auto set_mode_request = set_mode_client_->async_send_request(
+					request,
+					std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1)
+				);
+			}
+		}
+	}
+	
+	// handle offboard request
+	if (action.offboard == true && current_state_.mode != "OFFBOARD") {
+		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+		request->custom_mode = "OFFBOARD";
+		auto set_mode_request = set_mode_client_->async_send_request(
+			request,
+			[this](rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
+				auto response = future.get();
+
+				if (response->mode_sent) {
+					RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
+				} else {
+					RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
+				}
+			}
+		);
+	}
+
+	else if (action.offboard == true && current_state_.mode == "OFFBOARD") {
+		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+		request->custom_mode = "AUTO.LOITER";
+		auto set_mode_request = set_mode_client_->async_send_request(
+			request,
+			std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1)
+		);
 	}
 
     // handle command velocity
