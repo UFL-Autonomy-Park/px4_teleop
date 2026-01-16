@@ -22,6 +22,10 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 	init_service_clients();
     init_origin_rotation();
 
+	control_input_timer_ = this->create_wall_timer(
+							std::chrono::duration<double>(0.02),
+							std::bind(&PX4Teleop::control_input, this));
+
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
 
@@ -201,19 +205,27 @@ void PX4Teleop::init_origin_rotation() {
     }
 }
 
+void PX4Teleop::control_input() {
+	RCLCPP_INFO(this->get_logger(), "follower sending control input");
+
+	// check leaders position, offset by follower offset, P-controller
+	// to compute control input and send using cmd_vel_publisher. 
+}
+
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     if (!pose_init_) {
         RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
         return;
     }
-	else if (active_agent_id_ != px4_id_)
+	//else if (active_agent_id_ != px4_id_)
+	//	return;
+
+	else if (px4_id_ != leader_)
 		return;
 
     // process joy message with joy handler (returns struct with actions)
     JoyHandler::joy_action action = joy_handler_.process(joy_msg);
 
-    // handle mode switching
-	
 	// handle arm/takeoff
 	if (action.arm == true) {
 		if (current_state_.armed && landed_state_ == on_ground) {
@@ -266,6 +278,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 		);
 	}
 
+	// handle loiter request (same button as offboard)
 	else if (action.offboard == true && current_state_.mode == "OFFBOARD") {
 		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
 		request->custom_mode = "AUTO.LOITER";
@@ -506,6 +519,21 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 	mission_id_ = pmc_msg->mission_id;
 
 	// load mission parameters, do pre-flight checks
+	if (mission_id_ == "Formation Hold") {
+		this->declare_parameter("leader", "");
+		this->declare_parameter("followers", std::vector<std::string>{});
+		this->declare_parameter("follower_offset", Vector3{});
+		this->get_parameter("leader", leader_);
+		this->get_parameter("followers", followers_).as_string_array();
+		
+		if (px4_id_ != leader_) {
+			std::string param_name = px4_id_ + ".follower_offset";
+			this->get_parameter(param_name, follower_offset_).as_double_array();
+
+			RCLCPP_INFO(this->get_logger(), "Agent offset: %.2f, %.2f, %.2f",
+						follower_offset_[0], follower_offset_[1], follower_offset_[2]);
+		}
+	}
 	
 	// for testing, just directly sending back a true response
 	swarm_interfaces::msg::PrepareMissionResponse pmr_msg;

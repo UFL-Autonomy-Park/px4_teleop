@@ -44,6 +44,10 @@ public:
 
 private:
 
+	struct Vector3 {
+		float x, y, z;
+	}
+
     enum LandedState {
         undefined = 0,
         on_ground,
@@ -124,6 +128,10 @@ private:
 	float land_height_;
 	uint32_t mission_start_time_;
 	float minimum_takeoff_separation_;
+	std::string leader_;
+	std::vector<std::string> followers_;
+	std::vector<std::double> follower_offset_;
+
 	// mission pub/sub
 	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::SharedPtr itr_pub_;
@@ -151,6 +159,8 @@ private:
 	void itc_callback(const swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg);
 	void ilc_callback(const swarm_interfaces::msg::InitiateLandCommand::SharedPtr ilc_msg);
 	void smc_callback(const swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg);
+	void control_input();
+    rclcpp::TimerBase::SharedPtr control_input_timer_;
 
 	// neighbor callbacks
 	void neighbor_pose_callback(const geometry_msgs::msg::Pose::SharedPtr neighbor_pose_msg);
