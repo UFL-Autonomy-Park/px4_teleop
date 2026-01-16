@@ -21,10 +21,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 	init_subscribers();
 	init_service_clients();
     init_origin_rotation();
-
-	control_input_timer_ = this->create_wall_timer(
-							std::chrono::duration<double>(0.02),
-							std::bind(&PX4Teleop::control_input, this));
+	
 
     RCLCPP_INFO(this->get_logger(), "PX4 Teleop Initialized.");
 }
@@ -208,8 +205,40 @@ void PX4Teleop::init_origin_rotation() {
 void PX4Teleop::control_input() {
 	RCLCPP_INFO(this->get_logger(), "follower sending control input");
 
-	// check leaders position, offset by follower offset, P-controller
-	// to compute control input and send using cmd_vel_publisher. 
+	// check leaders position
+	geometry_msgs::msg::Pose target_pose = neighbor_poses_[leader_].pose;
+
+	// offset by follower distance
+	target_pose.position.x += follower_offset_[0];
+	target_pose.position.y += follower_offset_[1];
+	target_pose.position.z += follower_offset_[2];
+
+	// P controller
+	float vx = k_ * (target_pose.position.x - apark_pose_.position.x);
+	float vy = k_ * (target_pose.position.y - apark_pose_.position.y);
+	float vz = k_ * (target_pose.position.z - apark_pose_.position.z);
+
+    // create velocity command
+    geometry_msgs::msg::Twist unsafe_cmd_vel;
+    unsafe_cmd_vel.linear.x = vx;
+    unsafe_cmd_vel.linear.y = vy;
+    unsafe_cmd_vel.linear.z = vz;
+    unsafe_cmd_vel.angular.z = 0.0;
+
+    // Generate safe velocity command
+    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
+
+    // Convert safe autonomy park X/Y velocity command to ENU frame
+	geometry_msgs::msg::TwistStamped vel_enu;
+	vel_enu.header.frame_id = px4_id_;
+	vel_enu.header.stamp = this->get_clock()->now();
+	vel_enu.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
+	vel_enu.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
+	vel_enu.twist.linear.z = safe_cmd_vel.linear.z;
+	vel_enu.twist.angular.z = safe_cmd_vel.angular.z;
+
+	// publish velocity command to px4
+	cmd_vel_publisher_->publish(vel_enu);
 }
 
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
@@ -217,8 +246,8 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
         RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
         return;
     }
-	//else if (active_agent_id_ != px4_id_)
-	//	return;
+	else if (active_agent_id_ != px4_id_)
+		return;
 
 	else if (px4_id_ != leader_)
 		return;
@@ -514,21 +543,21 @@ void PX4Teleop::loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::S
 
 void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg) {
 
-	RCLCPP_INFO(this->get_logger(), "received prepare mission request.");
-
 	mission_id_ = pmc_msg->mission_id;
+
+	RCLCPP_INFO(this->get_logger(), "received prepare mission request. Mission ID: %s.", mission_id_.c_str());
 
 	// load mission parameters, do pre-flight checks
 	if (mission_id_ == "Formation Hold") {
 		this->declare_parameter("leader", "");
 		this->declare_parameter("followers", std::vector<std::string>{});
-		this->declare_parameter("follower_offset", Vector3{});
+		this->declare_parameter("follower_offset", std::vector<double>{});
 		this->get_parameter("leader", leader_);
-		this->get_parameter("followers", followers_).as_string_array();
+		this->get_parameter("followers", followers_);
 		
 		if (px4_id_ != leader_) {
 			std::string param_name = px4_id_ + ".follower_offset";
-			this->get_parameter(param_name, follower_offset_).as_double_array();
+			this->get_parameter(param_name, follower_offset_);
 
 			RCLCPP_INFO(this->get_logger(), "Agent offset: %.2f, %.2f, %.2f",
 						follower_offset_[0], follower_offset_[1], follower_offset_[2]);
@@ -552,9 +581,11 @@ void PX4Teleop::ilc_callback(swarm_interfaces::msg::InitiateLandCommand::SharedP
 		if (compute_horizontal_separation(apark_pose_.position, agent.second.pose.position) < minimum_takeoff_separation_)
 			valid_spacing = false;
 	}
-
-	mission_land_requested_ = true;
-	send_tol_request(false);
+	
+	if (valid_spacing == true) {
+		mission_land_requested_ = true;
+		send_tol_request(false);
+	}
 
 }
 void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg) {
@@ -596,6 +627,14 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg) {
 
 	RCLCPP_INFO(this->get_logger(), "received start mission request.");
+	
+	if (mission_id_ == "Formation Hold") {
+		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
+												 std::bind(&PX4Teleop::control_input, this));
+
+		this->declare_parameter("k-gain", 0.0);
+		this->get_parameter("k-gain", k_);
+	}
 
 	mission_start_time_ = smc_msg->timestamp;
 }

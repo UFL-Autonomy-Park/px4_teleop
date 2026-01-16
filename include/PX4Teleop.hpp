@@ -44,10 +44,6 @@ public:
 
 private:
 
-	struct Vector3 {
-		float x, y, z;
-	}
-
     enum LandedState {
         undefined = 0,
         on_ground,
@@ -91,7 +87,7 @@ private:
 	std::string px4_id_;
 	std::string active_agent_id_;
     std::set<std::string> connected_agents_;
-	//
+	
 	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> neighbor_pose_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr> neighbor_velocity_subscriptions_;
 	std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> neighbor_state_subscriptions_;
@@ -130,7 +126,8 @@ private:
 	float minimum_takeoff_separation_;
 	std::string leader_;
 	std::vector<std::string> followers_;
-	std::vector<std::double> follower_offset_;
+	std::vector<double> follower_offset_;
+	float k_;
 
 	// mission pub/sub
 	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
