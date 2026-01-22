@@ -400,6 +400,33 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		qos_profile,
 		[this, agent_namespace, agent_name](const mavros_msgs::msg::State::SharedPtr msg) {
 
+
+			// when leader is set to offboard mode, followers should go offboard as well
+			if (agent_name == leader_ && neighbor_states_.count(agent_name)) {
+				RCLCPP_INFO(this->get_logger(), "RECEIVED STATE UPDATE FROM LEADER: %s", msg->mode.c_str());
+				if (neighbor_states_[leader_].mode != "OFFBOARD" && msg->mode == "OFFBOARD") {
+					
+					// leader switched to offboard mode
+					auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+					request->custom_mode = "OFFBOARD";
+					auto set_mode_request = set_mode_client_->async_send_request(
+						request,
+						[this](rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
+							auto response = future.get();
+
+							if (response->mode_sent) {
+								RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
+							}
+							else {
+								RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
+								
+								// TODO: something about failed request
+							}
+						}
+					);
+				}
+			}
+
 			neighbor_states_.insert_or_assign(agent_name, *msg);
 		}
 	);
@@ -549,26 +576,31 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 
 	// load mission parameters, do pre-flight checks
 	if (mission_id_ == "Formation Hold") {
-		this->declare_parameter("leader", "");
-		this->declare_parameter("followers", std::vector<std::string>{});
-		this->declare_parameter("follower_offset", std::vector<double>{});
-		this->get_parameter("leader", leader_);
-		this->get_parameter("followers", followers_);
+		leader_ = "n1";
+		RCLCPP_INFO(this->get_logger(), "Starting mission: Formation Hold. With Leader: %s", leader_.c_str());
 		
 		if (px4_id_ != leader_) {
-			std::string param_name = px4_id_ + ".follower_offset";
-			this->get_parameter(param_name, follower_offset_);
+			RCLCPP_INFO(this->get_logger(), "I AM A FOLLOWER");
 
-			RCLCPP_INFO(this->get_logger(), "Agent offset: %.2f, %.2f, %.2f",
-						follower_offset_[0], follower_offset_[1], follower_offset_[2]);
+			if (px4_id_ == "n2") {
+				follower_offset_.push_back(1.0);
+				follower_offset_.push_back(1.0);
+				follower_offset_.push_back(0.0);
+			}
+			else if (px4_id_ == "n3") {
+				follower_offset_.push_back(1.0);
+				follower_offset_.push_back(-1.0);
+				follower_offset_.push_back(0.0);
+			}
 		}
+		else RCLCPP_INFO(this->get_logger(), "I AM THE LEADER");
 	}
 	
 	// for testing, just directly sending back a true response
 	swarm_interfaces::msg::PrepareMissionResponse pmr_msg;
 	pmr_msg.agent_id = px4_id_;
 	pmr_msg.ready = true;
-	pmr_msg.message = std::string("testing");
+	pmr_msg.message = std::string("Formation Hold");
 	pmr_pub_->publish(pmr_msg);
 
 }
@@ -628,15 +660,34 @@ void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedP
 
 	RCLCPP_INFO(this->get_logger(), "received start mission request.");
 	
-	if (mission_id_ == "Formation Hold") {
+	
+	if (mission_id_ == "Formation Hold" && px4_id_ != leader_) {
 		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
 												 std::bind(&PX4Teleop::control_input, this));
-
-		this->declare_parameter("k-gain", 0.0);
-		this->get_parameter("k-gain", k_);
+		k_ = 0.2;
 	}
 
 	mission_start_time_ = smc_msg->timestamp;
+
+	if(px4_id_ == leader_) {
+		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+		request->custom_mode = "OFFBOARD";
+		auto set_mode_request = set_mode_client_->async_send_request(
+			request,
+			[this](rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
+				auto response = future.get();
+
+				if (response->mode_sent) {
+					RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
+				}
+				else {
+					RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
+					
+					// TODO: something about failed request
+				}
+			}
+		);
+	}
 }
 
 void PX4Teleop::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
@@ -662,10 +713,12 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 
 			RCLCPP_INFO(this->get_logger(), "Mission TOL request succeeded. Result=%d", response->result);
 
+			std::this_thread::sleep_for(2000ms);
+			
 			swarm_interfaces::msg::InitiateTakeoffResponse itr_msg;
 			itr_msg.agent_id = px4_id_;
 			itr_msg.success = true;
-			itr_msg.message = "testing";
+			itr_msg.message = "Formation Hold";
 			itr_pub_->publish(itr_msg);
 
 			mission_takeoff_requested_ = false;
@@ -676,17 +729,14 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 			swarm_interfaces::msg::InitiateLandResponse ilr_msg;
 			ilr_msg.agent_id = px4_id_;
 			ilr_msg.success = true;
-			ilr_msg.message = "testing";
+			ilr_msg.message = "Formation Hold";
 			ilr_pub_->publish(ilr_msg);
 
 			mission_land_requested_ = false;
 
 		}
-
-		else {
-			RCLCPP_INFO(this->get_logger(), "TOL request succeeded. Result=%d", response->result);
-		}
-    } else {
+	}
+    else {
         RCLCPP_ERROR(this->get_logger(), "TOL request failed!");
     }
 }
