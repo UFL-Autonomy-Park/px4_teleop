@@ -1,0 +1,5 @@
+/**:
+  ros_parameters:
+    experiment_id: "test"
+    control_rate: 50
+    experiment_length: 360
