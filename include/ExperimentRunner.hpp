@@ -1,5 +1,5 @@
-#ifndef EXPERIMENT_MANAGER_HPP
-#define EXPERIMENT_MANAGER_HPP
+#ifndef EXPERIMENT_RUNNER_HPP
+#define EXPERIMENT_RUNNER_HPP
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
