@@ -10,8 +10,8 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 							landing_requested_(false),
 							sim_mode_(true),
 							alt_init_(false),
-							mission_takeoff_requested_(false),
-							mission_land_requested_(false)
+							experiment_takeoff_requested_(false),
+							experiment_land_requested_(false)
 {
 
     px4_id_ = std::string(this->get_namespace()).substr(1);
@@ -38,8 +38,8 @@ void PX4Teleop::init_publishers() {
 		10
         );
 
-	pmr_pub_ = this->create_publisher<swarm_interfaces::msg::PrepareMissionResponse>(
-		"/fleet_manager/prepare_mission/response",
+	per_pub_ = this->create_publisher<swarm_interfaces::msg::PrepareExperimentResponse>(
+		"/fleet_manager/prepare_experiment/response",
 		qos_profile
 		);
 		
@@ -71,10 +71,10 @@ void PX4Teleop::init_subscribers() {
 		std::bind(&PX4Teleop::connected_agents_callback, this, _1)
 	);
     
-	pmc_sub_ = this->create_subscription<swarm_interfaces::msg::PrepareMissionCommand>(
-		"/fleet_manager/prepare_mission/cmd",
+	pec_sub_ = this->create_subscription<swarm_interfaces::msg::PrepareExperimentCommand>(
+		"/fleet_manager/prepare_experiment/cmd",
 		qos_profile,
-		std::bind(&PX4Teleop::pmc_callback, this, _1)
+		std::bind(&PX4Teleop::pec_callback, this, _1)
 	);
 
 	itc_sub_ = this->create_subscription<swarm_interfaces::msg::InitiateTakeoffCommand>(
@@ -89,10 +89,10 @@ void PX4Teleop::init_subscribers() {
 		std::bind(&PX4Teleop::ilc_callback, this, _1)
 	);
 
-	smc_sub_ = this->create_subscription<swarm_interfaces::msg::StartMissionCommand>(
-		"/fleet_manager/start_mission/cmd",
+	sec_sub_ = this->create_subscription<swarm_interfaces::msg::StartExperimentCommand>(
+		"/fleet_manager/start_experiment/cmd",
 		qos_profile,
-		std::bind(&PX4Teleop::smc_callback, this, _1)
+		std::bind(&PX4Teleop::sec_callback, this, _1)
 	);
 
 	joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -568,16 +568,16 @@ void PX4Teleop::loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::S
 }
 
 
-void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg) {
+void PX4Teleop::pec_callback(swarm_interfaces::msg::PrepareExperimentCommand::SharedPtr pec_msg) {
 
-	mission_id_ = pmc_msg->mission_id;
+	experiment_id_ = pec_msg->experiment_id;
 
-	RCLCPP_INFO(this->get_logger(), "received prepare mission request. Mission ID: %s.", mission_id_.c_str());
+	RCLCPP_INFO(this->get_logger(), "received prepare experiment request. Experiment ID: %s.", experiment_id_.c_str());
 
-	// load mission parameters, do pre-flight checks
-	if (mission_id_ == "Formation Hold") {
+	// load experiment parameters, do pre-flight checks
+	if (experiment_id_ == "Formation Hold") {
 		leader_ = "n1";
-		RCLCPP_INFO(this->get_logger(), "Starting mission: Formation Hold. With Leader: %s", leader_.c_str());
+		RCLCPP_INFO(this->get_logger(), "Starting experiment: Formation Hold. With Leader: %s", leader_.c_str());
 		
 		if (px4_id_ != leader_) {
 			RCLCPP_INFO(this->get_logger(), "I AM A FOLLOWER");
@@ -597,11 +597,11 @@ void PX4Teleop::pmc_callback(swarm_interfaces::msg::PrepareMissionCommand::Share
 	}
 	
 	// for testing, just directly sending back a true response
-	swarm_interfaces::msg::PrepareMissionResponse pmr_msg;
-	pmr_msg.agent_id = px4_id_;
-	pmr_msg.ready = true;
-	pmr_msg.message = std::string("Formation Hold");
-	pmr_pub_->publish(pmr_msg);
+	swarm_interfaces::msg::PrepareExperimentResponse per_msg;
+	per_msg.agent_id = px4_id_;
+	per_msg.ready = true;
+	per_msg.message = std::string("Formation Hold");
+	per_pub_->publish(per_msg);
 
 }
 
@@ -615,7 +615,7 @@ void PX4Teleop::ilc_callback(swarm_interfaces::msg::InitiateLandCommand::SharedP
 	}
 	
 	if (valid_spacing == true) {
-		mission_land_requested_ = true;
+		experiment_land_requested_ = true;
 		send_tol_request(false);
 	}
 
@@ -649,25 +649,25 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 	}
 
 	if (position_lock && valid_spacing) {
-		mission_takeoff_requested_ = true;
+		experiment_takeoff_requested_ = true;
 		send_arming_request(true);
 	}
 
 
 }
 
-void PX4Teleop::smc_callback(swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg) {
+void PX4Teleop::sec_callback(swarm_interfaces::msg::StartExperimentCommand::SharedPtr sec_msg) {
 
-	RCLCPP_INFO(this->get_logger(), "received start mission request.");
+	RCLCPP_INFO(this->get_logger(), "received start experiment request.");
 	
 	
-	if (mission_id_ == "Formation Hold" && px4_id_ != leader_) {
+	if (experiment_id_ == "Formation Hold" && px4_id_ != leader_) {
 		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
 												 std::bind(&PX4Teleop::control_input, this));
 		k_ = 0.2;
 	}
 
-	mission_start_time_ = smc_msg->timestamp;
+	experiment_start_time_ = sec_msg->timestamp;
 
 	if(px4_id_ == leader_) {
 		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
@@ -709,9 +709,9 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 
     if (response->success) {
 
-		if (mission_takeoff_requested_) {
+		if (experiment_takeoff_requested_) {
 
-			RCLCPP_INFO(this->get_logger(), "Mission TOL request succeeded. Result=%d", response->result);
+			RCLCPP_INFO(this->get_logger(), "Experiment TOL request succeeded. Result=%d", response->result);
 
 			std::this_thread::sleep_for(2000ms);
 			
@@ -721,10 +721,10 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 			itr_msg.message = "Formation Hold";
 			itr_pub_->publish(itr_msg);
 
-			mission_takeoff_requested_ = false;
+			experiment_takeoff_requested_ = false;
 		}
 
-		else if (mission_land_requested_) {
+		else if (experiment_land_requested_) {
 			
 			swarm_interfaces::msg::InitiateLandResponse ilr_msg;
 			ilr_msg.agent_id = px4_id_;
@@ -732,7 +732,7 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 			ilr_msg.message = "Formation Hold";
 			ilr_pub_->publish(ilr_msg);
 
-			mission_land_requested_ = false;
+			experiment_land_requested_ = false;
 
 		}
 	}
@@ -774,9 +774,9 @@ void PX4Teleop::arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBo
 
 	if (response->success) {
 
-		if (mission_takeoff_requested_) {
+		if (experiment_takeoff_requested_) {
 
-			RCLCPP_INFO(this->get_logger(), "Mission Arm request succeeded. Result=%d", response->result);
+			RCLCPP_INFO(this->get_logger(), "Experiment Arm request succeeded. Result=%d", response->result);
 			std::this_thread::sleep_for(2000ms);
 			send_tol_request(true);
 		}

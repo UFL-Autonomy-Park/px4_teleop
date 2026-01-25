@@ -1,8 +1,9 @@
-#ifndef MISSION_MANAGER_HPP
-#define MISSION_MANAGER_HPP
+#ifndef EXPERIMENT_MANAGER_HPP
+#define EXPERIMENT_MANAGER_HPP
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <map>
 
 class MissionManager {
 public:
@@ -12,14 +13,14 @@ private:
 	virtual ~MissionManager();	
 
 	// lifecycle 
-	virtual int get_mission_id() = 0;
-	virtual bool prepare(/* params here */) = 0;
-	virtual bool takeoff(/* params here */) = 0;
-	virtual void start() = 0;
-	virtual void stop() = 0;
+	virtual int get_mission_id();
+	virtual bool prepare(/* params here */);
+	virtual bool takeoff(/* params here */);
+	virtual void start();
+	virtual void stop();
 
 	// control
-	virtual double get_control_rate() = 0;
+	virtual double get_control_rate();
 	virtual void controlLoop (
 		const geometry_msgs::msg::PoseStamped agent_pose_stamped,
 		const geometry_msgs::msg::TwistStamped agent_vel_stamped,

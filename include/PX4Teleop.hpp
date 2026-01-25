@@ -27,13 +27,13 @@
 #include <mavros_msgs/srv/set_mode.hpp>
 
 // Custom Messages & Libraries
-#include "swarm_interfaces/msg/prepare_mission_command.hpp"
-#include "swarm_interfaces/msg/prepare_mission_response.hpp"
+#include "swarm_interfaces/msg/prepare_experiment_command.hpp"
+#include "swarm_interfaces/msg/prepare_experiment_response.hpp"
 #include "swarm_interfaces/msg/initiate_takeoff_command.hpp"
 #include "swarm_interfaces/msg/initiate_takeoff_response.hpp"
 #include "swarm_interfaces/msg/initiate_land_command.hpp"
 #include "swarm_interfaces/msg/initiate_land_response.hpp"
-#include "swarm_interfaces/msg/start_mission_command.hpp"
+#include "swarm_interfaces/msg/start_experiment_command.hpp"
 #include "swarm_interfaces/msg/connected_agents.hpp"
 #include <px4_safety_lib/PX4Safety.hpp>
 #include "JoyHandler.hpp"
@@ -110,33 +110,33 @@ private:
 	bool landing_requested_;
 	bool sim_mode_;
 	bool alt_init_;
-	bool mission_takeoff_requested_;
-	bool mission_land_requested_;
+	bool experiment_takeoff_requested_;
+	bool experiment_land_requested_;
 
     // === Origin & Coordinate Transformation ===
     double origin_r_;
     double cos_origin_;
     double sin_origin_;
 
-	// mission parameters
-	std::string mission_id_;
+	// experiment parameters
+	std::string experiment_id_;
 	float takeoff_height_;
 	float land_height_;
-	uint32_t mission_start_time_;
+	uint32_t experiment_start_time_;
 	float minimum_takeoff_separation_;
 	std::string leader_;
 	std::vector<std::string> followers_;
 	std::vector<double> follower_offset_;
 	float k_;
 
-	// mission pub/sub
-	rclcpp::Publisher<swarm_interfaces::msg::PrepareMissionResponse>::SharedPtr pmr_pub_;
+	// experiment pub/sub
+	rclcpp::Publisher<swarm_interfaces::msg::PrepareExperimentResponse>::SharedPtr per_pub_;
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateTakeoffResponse>::SharedPtr itr_pub_;
 	rclcpp::Publisher<swarm_interfaces::msg::InitiateLandResponse>::SharedPtr ilr_pub_;
-	rclcpp::Subscription<swarm_interfaces::msg::PrepareMissionCommand>::SharedPtr pmc_sub_;
+	rclcpp::Subscription<swarm_interfaces::msg::PrepareExperimentCommand>::SharedPtr pec_sub_;
 	rclcpp::Subscription<swarm_interfaces::msg::InitiateTakeoffCommand>::SharedPtr itc_sub_;
 	rclcpp::Subscription<swarm_interfaces::msg::InitiateLandCommand>::SharedPtr ilc_sub_;
-	rclcpp::Subscription<swarm_interfaces::msg::StartMissionCommand>::SharedPtr smc_sub_;
+	rclcpp::Subscription<swarm_interfaces::msg::StartExperimentCommand>::SharedPtr sec_sub_;
 
 	// agent callbacks
 	void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr altitude_msg);
@@ -151,11 +151,11 @@ private:
 	void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
 	void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
 
-	// mission callbacks
-	void pmc_callback(const swarm_interfaces::msg::PrepareMissionCommand::SharedPtr pmc_msg);
+	// experiment callbacks
+	void pec_callback(const swarm_interfaces::msg::PrepareExperimentCommand::SharedPtr pec_msg);
 	void itc_callback(const swarm_interfaces::msg::InitiateTakeoffCommand::SharedPtr itc_msg);
 	void ilc_callback(const swarm_interfaces::msg::InitiateLandCommand::SharedPtr ilc_msg);
-	void smc_callback(const swarm_interfaces::msg::StartMissionCommand::SharedPtr smc_msg);
+	void sec_callback(const swarm_interfaces::msg::StartExperimentCommand::SharedPtr sec_msg);
 	void control_input();
     rclcpp::TimerBase::SharedPtr control_input_timer_;
 
