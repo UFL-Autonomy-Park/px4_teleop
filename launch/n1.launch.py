@@ -29,7 +29,7 @@ def generate_launch_description():
                 os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'park_coordinates.yaml'),
                 os.path.join(get_package_share_directory('px4_teleop'), 'param', 'sim_obstacles.yaml'),
                 os.path.join(get_package_share_directory('px4_teleop'), 'param', 'button_config.yaml'),
-                os.path.join(get_package_share_directory('px4_teleop'), 'param', 'experiment_test.yaml'))
+                os.path.join(get_package_share_directory('px4_teleop'), 'param', 'experiment_test.yaml')
             ],
             output='screen'
         ),

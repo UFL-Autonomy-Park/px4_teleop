@@ -37,6 +37,7 @@
 #include "swarm_interfaces/msg/connected_agents.hpp"
 #include <px4_safety_lib/PX4Safety.hpp>
 #include "JoyHandler.hpp"
+#include "ExperimentRunner.hpp"
 
 class PX4Teleop : public rclcpp::Node {
 public:
@@ -62,6 +63,7 @@ private:
 
     // === Handlers & Utilities ===
     JoyHandler joy_handler_;
+	ExperimentRunner *experiment_runner_;
     px4_safety_lib::PX4Safety px4_safety;
 
 

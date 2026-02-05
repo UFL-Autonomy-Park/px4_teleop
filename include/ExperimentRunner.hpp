@@ -25,17 +25,18 @@ private:
 		const std::map<std::string, geometry_msgs::msg::PoseStamped> neighbor_poses_stamped,
 		const std::map<std::string, geometry_msgs::msg::TwistStamped> neighbor_vels_stamped
 	) = 0;
+	virtual void init_parameters() = 0;
 
 	// common functions implemented by base class
-	virtual double get_control_rate() const {return control_rate_};
-	virtual std::string get_id() const {return experiment_id_};
-	virtual double get_experiment_length() {return experimnet_length_sec_};
+	virtual double get_control_rate() const {return control_rate_;};
+	virtual std::string get_id() const {return experiment_id_;};
+	virtual double get_experiment_length() {return experiment_length_sec_;};
 
 	virtual void start();
 	virtual void stop();
 
 
-	double control_rate_
+	double control_rate_;
 	std::string experiment_id_;
 	double experiment_length_sec_;
 };
