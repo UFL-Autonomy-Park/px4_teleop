@@ -8,7 +8,6 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 							gpos_init_(false),
 							pose_init_(false),
 							landing_requested_(false),
-							sim_mode_(true),
 							alt_init_(false),
 							experiment_takeoff_requested_(false),
 							experiment_land_requested_(false)
@@ -96,7 +95,7 @@ void PX4Teleop::init_subscribers() {
 	);
 
 	joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
-		"/joy",
+		"/multi_agent/joy",
 		qos_profile,
 		std::bind(&PX4Teleop::joy_callback, this, _1)
 	);
