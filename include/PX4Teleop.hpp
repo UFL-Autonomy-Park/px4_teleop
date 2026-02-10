@@ -114,6 +114,7 @@ private:
 	bool alt_init_;
 	bool experiment_takeoff_requested_;
 	bool experiment_land_requested_;
+	bool running_experiment_;
 
     // === Origin & Coordinate Transformation ===
     double origin_r_;
