@@ -575,18 +575,18 @@ void PX4Teleop::pec_callback(swarm_interfaces::msg::PrepareExperimentCommand::Sh
 
 	// load experiment parameters, do pre-flight checks
 	if (experiment_id_ == "Formation Hold") {
-		leader_ = "n1";
+		leader_ = "astro_1";
 		RCLCPP_INFO(this->get_logger(), "Starting experiment: Formation Hold. With Leader: %s", leader_.c_str());
 		
 		if (px4_id_ != leader_) {
 			RCLCPP_INFO(this->get_logger(), "I AM A FOLLOWER");
 
-			if (px4_id_ == "n2") {
+			if (px4_id_ == "astro_2") {
 				follower_offset_.push_back(1.0);
 				follower_offset_.push_back(1.0);
 				follower_offset_.push_back(0.0);
 			}
-			else if (px4_id_ == "n3") {
+			else if (px4_id_ == "astro_3") {
 				follower_offset_.push_back(1.0);
 				follower_offset_.push_back(-1.0);
 				follower_offset_.push_back(0.0);
@@ -660,10 +660,11 @@ void PX4Teleop::sec_callback(swarm_interfaces::msg::StartExperimentCommand::Shar
 	RCLCPP_INFO(this->get_logger(), "received start experiment request.");
 	
 	
-	if (experiment_id_ == "Formation Hold" && px4_id_ != leader_) {
+	if (px4_id_ != leader_) {
+		//TODO: NEED TO CONSIDER WHEN FOLLOWER GOES OFFBOARD VS WHEN THE CONTROL LOOP STARTS
+		k_ = 0.2;
 		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
 												 std::bind(&PX4Teleop::control_input, this));
-		k_ = 0.2;
 	}
 
 	experiment_start_time_ = sec_msg->timestamp;

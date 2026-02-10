@@ -2,4 +2,5 @@
   ros_parameters:
     experiment_id: "test"
     control_rate: 50
+    kp: 2.0
     experiment_length: 360
