@@ -26,7 +26,7 @@ void JoyHandler::init_parameters() {
         node_->get_parameter("z_vel_max", axes_.z.factor) &&
         node_->get_parameter("yaw_vel_max", axes_.yaw.factor))
     {
-        RCLCPP_INFO(node_->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
+        RCLCPP_INFO(node_->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d, XVel_Max: %.1f, YVel_Max: %.1f, ZVel_Max: %.1f: ", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis, axes_.x.factor, axes_.y.factor, axes_.z.factor);
     }
 
     else {
