@@ -62,9 +62,9 @@ private:
 	};
 
     // === Handlers & Utilities ===
+	std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety_;
     JoyHandler joy_handler_;
 	ExperimentRunner *experiment_runner_;
-    px4_safety_lib::PX4Safety px4_safety;
 
 
 	// pub subs

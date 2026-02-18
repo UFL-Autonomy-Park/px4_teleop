@@ -4,27 +4,33 @@ using std::placeholders::_1;
 using namespace std::chrono_literals;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
-							joy_handler_(this),
-							gpos_init_(false),
-							pose_init_(false),
-							landing_requested_(false),
-							alt_init_(false),
-							experiment_takeoff_requested_(false),
-							experiment_land_requested_(false),
-							running_experiment_(false),
-							takeoff_height_{2.5}
+				joy_handler_(this),
+				gpos_init_(false),
+				pose_init_(false),
+				landing_requested_(false),
+				alt_init_(false),
+				experiment_takeoff_requested_(false),
+				experiment_land_requested_(false),
+				running_experiment_(false),
+				takeoff_height_{2.5}
 {
 
-    px4_id_ = std::string(this->get_namespace()).substr(1);
-
-    px4_safety.initialize(this);
+	px4_id_ = std::string(this->get_namespace()).substr(1);
+    
 	init_publishers();
 	init_subscribers();
 	init_service_clients();
-    init_origin_rotation();
+	init_origin_rotation();
 	
+	// initialize safety
+	try {
+		px4_safety_ = std::make_unique<px4_safety_lib::PX4Safety>(*this);
+	} catch (const std::runtime_error &e) {
+		RCLCPP_FATAL(this->get_logger(), "%s", e.what());
+		throw;
+	}
 
-    RCLCPP_INFO(this->get_logger(), "Agent: %s | PX4 Teleop Initialized.", px4_id_.c_str());
+	RCLCPP_INFO(this->get_logger(), "Agent: %s | PX4 Teleop Initialized.", px4_id_.c_str());
 }
 
 void PX4Teleop::init_publishers() {
@@ -226,7 +232,7 @@ void PX4Teleop::control_input() {
     unsafe_cmd_vel.angular.z = 0.0;
 
     // Generate safe velocity command
-    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
+    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety_->compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
 
     // Convert safe autonomy park X/Y velocity command to ENU frame
 	geometry_msgs::msg::TwistStamped vel_enu;
@@ -327,7 +333,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     unsafe_cmd_vel.angular.z = action.angular_z;
 
     //Generate safe velocity command
-    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
+    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety_->compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
 
     //Convert safe autonomy park X/Y velocity command to ENU frame
 	geometry_msgs::msg::TwistStamped vel_enu;
