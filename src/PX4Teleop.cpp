@@ -172,7 +172,7 @@ void PX4Teleop::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "Mode service not available, waiting again...");
     }
 
     //Wait for arm service
@@ -182,7 +182,7 @@ void PX4Teleop::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "Arming service not available, waiting again...");
     }
 
     //Wait for TOL service
@@ -192,7 +192,7 @@ void PX4Teleop::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "TOL service not available, waiting again...");
     }
 }
 
@@ -200,7 +200,7 @@ void PX4Teleop::init_origin_rotation() {
     this->declare_parameter("origin_r", 0.0);
 
     if (this->get_parameter("origin_r", origin_r_)) {
-        RCLCPP_INFO(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
+        RCLCPP_DEBUG(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
         cos_origin_ = cos(origin_r_);
         sin_origin_ = sin(origin_r_);
     } else {
@@ -280,11 +280,9 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 		}
 		else {
 			if (current_state_.mode == "AUTO.LOITER") {
-				RCLCPP_INFO(this->get_logger(), "received command to send landing request");
 				send_tol_request(false);
 			}
 			else {
-				RCLCPP_INFO(this->get_logger(), "drone in air, sending loiter request before landing, mode: %s", current_state_.mode.c_str());
 				landing_requested_ = true;
 
 				auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
@@ -364,14 +362,10 @@ void PX4Teleop::connected_agents_callback(const swarm_interfaces::msg::Connected
 
     for(const auto& agent: added_agents) {
         add_agent(agent);
-
-		if (agent != px4_id_)
-			RCLCPP_INFO(this->get_logger(), "Added neighbor: %s", agent.c_str());
     }
 
     for(const auto& agent: removed_agents) {
         remove_agent(agent);
-        RCLCPP_INFO(this->get_logger(), "Removed neighbor: %s", agent.c_str());
     }
 
     connected_agents_ = updated_agents;

@@ -26,7 +26,7 @@ void JoyHandler::init_parameters() {
         node_->get_parameter("z_vel_max", axes_.z.factor) &&
         node_->get_parameter("yaw_vel_max", axes_.yaw.factor))
     {
-        RCLCPP_INFO(node_->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d, XVel_Max: %.1f, YVel_Max: %.1f, ZVel_Max: %.1f: ", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis, axes_.x.factor, axes_.y.factor, axes_.z.factor);
+        RCLCPP_DEBUG(node_->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d, XVel_Max: %.1f, YVel_Max: %.1f, ZVel_Max: %.1f: ", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis, axes_.x.factor, axes_.y.factor, axes_.z.factor);
     }
 
     else {
@@ -45,7 +45,7 @@ void JoyHandler::init_parameters() {
         node_->get_parameter("control_button", buttons_.control.index) &&
         node_->get_parameter("follow_setpoint_button", buttons_.follow.index))
     {
-        RCLCPP_INFO(node_->get_logger(), "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d", buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index);
+        RCLCPP_DEBUG(node_->get_logger(), "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d", buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index);
     }
     else {
         RCLCPP_ERROR(node_->get_logger(), "Button parameters failed to load. Exiting.");
@@ -66,7 +66,6 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
     int switch_agent_button_state = get_button(joy_msg, buttons_.control);
     if (switch_agent_button_state != button_state_.switchAgent.state) {
         if (switch_agent_button_state == 1) {
-            RCLCPP_INFO(node_->get_logger(), "Switch agent button pressed.");
             action.switch_agent = true;
         } else {
             action.switch_agent = false;
