@@ -54,7 +54,9 @@ px4_teleop/
     ├── sim_obstacles.yaml     # Simulation obstacle definitions
     └── astro3_obstacles.yaml  # Hardware obstacle definitions
 ```
-
+---
+## Joycon Controlls
+![joycon controlls picture](docs/joystick.png)
 ---
 ## Nodes & Topics
 
