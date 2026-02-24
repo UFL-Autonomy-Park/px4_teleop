@@ -56,7 +56,7 @@ px4_teleop/
 ```
 ---
 ## Joycon Controlls
-![joycon controlls picture](docs/joystick.png)
+![joycon controlls picture](docs/joystick.jpg)
 ---
 ## Nodes & Topics
 
