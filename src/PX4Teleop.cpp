@@ -4,19 +4,18 @@ using std::placeholders::_1;
 using namespace std::chrono_literals;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
-				joy_handler_(this),
-				gpos_init_(false),
-				pose_init_(false),
-				landing_requested_(false),
-				alt_init_(false),
-				experiment_takeoff_requested_(false),
-				experiment_land_requested_(false),
-				running_experiment_(false),
-				takeoff_height_{2.5}
+	joy_handler_(this),
+	gpos_init_(false),
+	pose_init_(false),
+	landing_requested_(false),
+	alt_init_(false),
+	experiment_takeoff_requested_(false),
+	experiment_land_requested_(false),
+	running_experiment_(false),
+	takeoff_height_{2.5}
 {
 
 	px4_id_ = std::string(this->get_namespace()).substr(1);
-    
 	init_publishers();
 	init_subscribers();
 	init_service_clients();

@@ -45,7 +45,10 @@ void JoyHandler::init_parameters() {
         node_->get_parameter("control_button", buttons_.control.index) &&
         node_->get_parameter("follow_setpoint_button", buttons_.follow.index))
     {
-        RCLCPP_DEBUG(node_->get_logger(), "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d", buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index);
+        RCLCPP_DEBUG(node_->get_logger(),
+					 "Loaded button mappings:\nArm: %d, Disarm: %d, Control: %d, Follow: %d",
+					 buttons_.arm.index, buttons_.disarm.index, buttons_.control.index, buttons_.follow.index
+					 );
     }
     else {
         RCLCPP_ERROR(node_->get_logger(), "Button parameters failed to load. Exiting.");
@@ -124,7 +127,9 @@ JoyHandler::joy_action JoyHandler::process(const sensor_msgs::msg::Joy::SharedPt
 
 double JoyHandler::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
     if (axis.axis < 0 || std::abs(axis.axis) > (int)joy_msg->axes.size()-1) {
-        RCLCPP_ERROR(node_->get_logger(), "Axis %d out of range, joy has %d axes", axis.axis, (int)joy_msg->axes.size());
+        RCLCPP_ERROR(node_->get_logger(),
+					 "Axis %d out of range, joy has %d axes",
+					 axis.axis, (int)joy_msg->axes.size());
         return -1;
     }
 
@@ -135,7 +140,9 @@ double JoyHandler::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, con
 
 int JoyHandler::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button) {
     if (button.index < 0 || button.index > (int)joy_msg->buttons.size()-1) {
-        RCLCPP_ERROR(node_->get_logger(), "Button %d out of range, joy has %d buttons", button.index, (int)joy_msg->buttons.size());
+        RCLCPP_ERROR(node_->get_logger(),
+					 "Button %d out of range, joy has %d buttons",
+					 button.index, (int)joy_msg->buttons.size());
         return -1;
     }
 
