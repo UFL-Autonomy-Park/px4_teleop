@@ -59,9 +59,10 @@ private:
     std::string agent_id_;
     geometry_msgs::msg::TwistStamped setpoint_vel_;
 
+	std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety;
+
     double origin_r_, cos_origin_, sin_origin_;
 
-    px4_safety_lib::PX4Safety px4_safety;
     bool pose_init_;
 
 	void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);

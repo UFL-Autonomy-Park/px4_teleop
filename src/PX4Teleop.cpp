@@ -9,6 +9,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     //Get my namespace (remove the slash with substr)
     agent_id_ = std::string(this->get_namespace()).substr(1);
 
+
     //Get controller parameters
     this->declare_parameter("x_axis", -1);
     this->declare_parameter("y_axis", -1);
@@ -44,7 +45,13 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
         return;
     }
 
-    px4_safety.initialize(this);
+	// initialize safety
+	try {
+		px4_safety = std::make_unique<px4_safety_lib::PX4Safety>(*this);
+	} catch (const std::runtime_error &e) {
+		RCLCPP_FATAL(this->get_logger(), "%s", e.what());
+		throw;
+	}
 
     setpoint_vel_.header.frame_id = agent_id_;
 
@@ -74,7 +81,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     unsafe_cmd_vel.angular.z = get_axis(joy_msg, axes_.yaw);
 
     //Generate safe velocity command
-    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety.compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
+    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety->compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
 
     //Convert autonomy park X/Y velocity command to ENU frame
     setpoint_vel_.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
@@ -93,7 +100,7 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 void PX4Teleop::publish_setpoint() {
     rclcpp::Time now = this->get_clock()->now();
     setpoint_vel_.header.stamp = this->get_clock()->now();
-    vel_publisher_->publish(setpoint_vel_);
+    //vel_publisher_->publish(setpoint_vel_);
 }
 
 double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {

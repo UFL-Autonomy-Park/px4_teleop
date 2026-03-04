@@ -36,7 +36,7 @@ def generate_launch_description():
             parameters=[
                 os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'park_coordinates.yaml'),
                 os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'button_config.yaml'),
-                {'sim_mode': True}
+                {'sim_mode': False}
             ],
             output='screen'
         ),
@@ -49,17 +49,13 @@ def generate_launch_description():
                 os.path.join(get_package_share_directory('px4_teleop'), 'param', 'teleop_config.yaml'),
                 os.path.join(get_package_share_directory('px4_safety_lib'), 'param', 'safety_config.yaml'),
                 os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'park_coordinates.yaml'),
-                os.path.join(get_package_share_directory('px4_teleop'), 'param', 'sim_obstacles.yaml')
             ],
             output='screen'
         ),
         Node(
-            package='virtual_obstacle',
-            executable='virtual_obstacle_node',
-            name='virtual_obstacle_node',
-            parameters=[
-                os.path.join(get_package_share_directory('virtual_obstacle'), 'param', 'obstacles.yaml')
-            ],
-            output='screen'
+            package='cloe_experiment',
+            executable='cloe',
+            name='cloe_experiment',
+            namespace='astro_sim',
         )
     ])
