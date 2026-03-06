@@ -17,6 +17,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 
 	px4_id_ = std::string(this->get_namespace()).substr(1);
     
+	LeaderFollower lf(this);
 	init_publishers();
 	init_subscribers();
 	init_service_clients();
@@ -29,6 +30,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 		RCLCPP_FATAL(this->get_logger(), "%s", e.what());
 		throw;
 	}
+
 
 	RCLCPP_INFO(this->get_logger(), "Agent: %s | PX4 Teleop Initialized.", px4_id_.c_str());
 }
@@ -343,7 +345,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 	vel_enu.twist.angular.z = safe_cmd_vel.angular.z;
 
 	// publish velocity command to px4
-	cmd_vel_publisher_->publish(vel_enu);
+//	cmd_vel_publisher_->publish(vel_enu);
 }
 
 
@@ -663,7 +665,7 @@ void PX4Teleop::sec_callback(swarm_interfaces::msg::StartExperimentCommand::Shar
 	
 	if (px4_id_ != leader_) {
 		//TODO: NEED TO CONSIDER WHEN FOLLOWER GOES OFFBOARD VS WHEN THE CONTROL LOOP STARTS
-		k_ = 1.5;
+		k_ = 0.75;
 		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
 												 std::bind(&PX4Teleop::control_input, this));
 	}

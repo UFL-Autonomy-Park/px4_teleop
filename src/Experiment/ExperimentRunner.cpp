@@ -1,34 +1,9 @@
 #include "ExperimentRunner.hpp"
 
-ExperimentRunner::ExperimentRunner(rclcpp::Node *parent_node) {
-	node_ = parent_node;
-
-	init_parameters();
-}
-
-void ExperimentRunner::init_parameters() {
-
-	node_->declare_parameter("control_rate", 0.0);
-	node_->declare_parameter("experiment_id", "");
-	node_->declare_parameter("experiment_length", 0.0);
-
-	if (!node_->get_parameter("control_rate", control_rate_)) {
-		RCLCPP_ERROR(node_->get_logger(), "Failed to load mission parameter: control rate.");
-		rclcpp::shutdown();
-	}
-
-	if(!node_->get_parameter("experiment_id", experiment_id_)) {
-		RCLCPP_ERROR(node_->get_logger(), "Failed to load mission parameter: experiment id.");
-		rclcpp::shutdown();
-	}
-
-	if(!node_->get_parameter("experiment_length", experiment_length_sec_)) {
-		RCLCPP_ERROR(node_->get_logger(), "Failed to load mission parameter: experiment length.");
-		rclcpp::shutdown();
-	}
-
-	RCLCPP_INFO(node_->get_logger(), "Loaded experiment: %s (%.1f sec @ %.1f Hz)", 
-					experiment_id_.c_str(), experiment_length_sec_, control_rate_);
+ExperimentRunner::ExperimentRunner(rclcpp::Node *parent_node)
+	: node_{ parent_node }
+{
+	RCLCPP_INFO(node_->get_logger(), "Hello from base Experiment Runner class!");
 }
 
 void ExperimentRunner::start() {
@@ -42,4 +17,11 @@ void ExperimentRunner::stop() {
 	/* Some landing procedure here */
 }
 
-ExperimentRunner::~ExperimentRunner() = default;
+
+double get_control_rate() { return control_rate_; }
+std::string get_experiment_id() { return experiment_id_; }
+double get_experiment_length_sec() {return experiment_length_sec_; }
+
+void set_control_rate(double rate) { control_rate_ = rate; }
+void set_experiment_id(std::string id) { experiment_id_ = id; }
+void set_experiment_length_sec(doublde length) { experiment_length_sec_ = length; } 

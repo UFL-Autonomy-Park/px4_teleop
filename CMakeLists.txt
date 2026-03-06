@@ -26,9 +26,11 @@ add_executable(
     src/PX4Teleop.cpp
     src/JoyHandler.cpp
 	src/Experiment/ExperimentRunner.cpp
+	src/Experiment/LeaderFollower.cpp
     include/PX4Teleop.hpp
     include/JoyHandler.hpp
 	include/ExperimentRunner.hpp
+	include/LeaderFollower.hpp
 )
 
 ament_target_dependencies(
