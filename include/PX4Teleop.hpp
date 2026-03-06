@@ -61,8 +61,8 @@ private:
 
     double origin_r_, cos_origin_, sin_origin_;
 
-    px4_safety_lib::PX4Safety px4_safety;
     bool pose_init_;
+    std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety;
 
 	void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg);
