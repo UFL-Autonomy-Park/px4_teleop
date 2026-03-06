@@ -9,12 +9,11 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 	pose_init_(false),
 	landing_requested_(false),
 	alt_init_(false),
-	experiment_takeoff_requested_(false),
-	experiment_land_requested_(false),
-	running_experiment_(false),
+	coordinated_takeoff_requested_(false),
+	coordinated_land_requested_(false),
 	takeoff_height_{2.5}
 {
-
+	
 	px4_id_ = std::string(this->get_namespace()).substr(1);
 	init_publishers();
 	init_subscribers();
@@ -152,6 +151,16 @@ void PX4Teleop::init_subscribers() {
 		qos_profile,
 		[this](const std_msgs::msg::String::SharedPtr active_agent)
 		{
+			// if current agent is offboard, switch to loiter
+			if (current_state_.mode == "OFFBOARD") {
+				auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
+				request->custom_mode = "AUTO.LOITER";
+				auto set_mode_request = set_mode_client_->async_send_request(
+						request,
+						std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1)
+				);
+			}
+
 			active_agent_id_ = active_agent->data;
 		}
 	);
@@ -175,7 +184,7 @@ void PX4Teleop::init_service_clients() {
     }
 
     //Wait for arm service
-    while (!arm_client_->wait_for_service(1s)) {
+	while (!arm_client_->wait_for_service(1s)) {
         if (!rclcpp::ok()) {
             RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
             rclcpp::shutdown();
@@ -208,60 +217,17 @@ void PX4Teleop::init_origin_rotation() {
     }
 }
 
-void PX4Teleop::control_input() {
-
-	// check leaders position
-	geometry_msgs::msg::Pose target_pose = neighbor_poses_[leader_].pose;
-
-	// offset by follower distance
-	target_pose.position.x += follower_offset_[0];
-	target_pose.position.y += follower_offset_[1];
-	target_pose.position.z += follower_offset_[2];
-
-	// P controller
-	float vx = k_ * (target_pose.position.x - apark_pose_.position.x);
-	float vy = k_ * (target_pose.position.y - apark_pose_.position.y);
-	float vz = k_ * (target_pose.position.z - apark_pose_.position.z);
-
-    // create velocity command
-    geometry_msgs::msg::Twist unsafe_cmd_vel;
-    unsafe_cmd_vel.linear.x = vx;
-    unsafe_cmd_vel.linear.y = vy;
-    unsafe_cmd_vel.linear.z = vz;
-    unsafe_cmd_vel.angular.z = 0.0;
-
-    // Generate safe velocity command
-    geometry_msgs::msg::Twist safe_cmd_vel = px4_safety_->compute_safe_cmd_vel(apark_pose_, unsafe_cmd_vel);
-
-    // Convert safe autonomy park X/Y velocity command to ENU frame
-	geometry_msgs::msg::TwistStamped vel_enu;
-	vel_enu.header.frame_id = px4_id_;
-	vel_enu.header.stamp = this->get_clock()->now();
-	vel_enu.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
-	vel_enu.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
-	vel_enu.twist.linear.z = safe_cmd_vel.linear.z;
-	vel_enu.twist.angular.z = safe_cmd_vel.angular.z;
-
-	// publish velocity command to px4
-	cmd_vel_publisher_->publish(vel_enu);
-}
-
 void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     if (!pose_init_) {
-		// Commenting out, too many agents printing this.
-        //RCLCPP_WARN(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
+        RCLCPP_DEBUG(this->get_logger(), "Ignoring joy inputs until agent pose is initialized.");
         return;
     }
 
-	else if (active_agent_id_ != px4_id_) return;
-
-	else if (running_experiment_) {
-		if (px4_id_ != leader_) return;
-	}
+    else if (active_agent_id_ != px4_id_) return;
 
     // process joy message with joy handler (returns struct with actions)
     JoyHandler::joy_action action = joy_handler_.process(joy_msg);
-
+	
 	// handle arm/takeoff
 	if (action.arm == true) {
 		if (current_state_.armed && landed_state_ == on_ground) {
@@ -382,7 +348,6 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		agent_namespace + "/autonomy_park/pose",
 		qos_profile,
 		[this, agent_namespace, agent_name](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-
 			neighbor_poses_.insert_or_assign(agent_name, *msg);
 		}
 	);
@@ -391,7 +356,6 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		agent_namespace + "/setpoint_velocity/cmd_vel",
 		qos_profile,
 		[this, agent_namespace, agent_name](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-
 			neighbor_velocities_.insert_or_assign(agent_name, *msg);
 		}
 	);
@@ -400,33 +364,6 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		agent_namespace + "/state",
 		qos_profile,
 		[this, agent_namespace, agent_name](const mavros_msgs::msg::State::SharedPtr msg) {
-
-
-			// when leader is set to offboard mode, followers should go offboard as well
-			if (agent_name == leader_ && neighbor_states_.count(agent_name)) {
-				if (neighbor_states_[leader_].mode != "OFFBOARD" && msg->mode == "OFFBOARD") {
-					
-					// leader switched to offboard mode
-					auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-					request->custom_mode = "OFFBOARD";
-					auto set_mode_request = set_mode_client_->async_send_request(
-						request,
-						[this](rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
-							auto response = future.get();
-
-							if (response->mode_sent) {
-								RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
-							}
-							else {
-								RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
-								
-								// TODO: something about failed request
-							}
-						}
-					);
-				}
-			}
-
 			neighbor_states_.insert_or_assign(agent_name, *msg);
 		}
 	);
@@ -435,7 +372,6 @@ void PX4Teleop::add_agent(const std::string &agent_name) {
 		agent_namespace + "/extended_state",
 		qos_profile,
 		[this, agent_namespace, agent_name](const mavros_msgs::msg::ExtendedState::SharedPtr msg) {
-
 			neighbor_ext_states_.insert_or_assign(agent_name, *msg);
 		}
 	);
@@ -573,33 +509,12 @@ void PX4Teleop::pec_callback(swarm_interfaces::msg::PrepareExperimentCommand::Sh
 	experiment_id_ = pec_msg->experiment_id;
 
 	RCLCPP_INFO(this->get_logger(), "received prepare experiment request. Experiment ID: %s.", experiment_id_.c_str());
-
-	// load experiment parameters, do pre-flight checks
-	if (experiment_id_ == "Formation Hold") {
-		leader_ = "agent_1";
-		RCLCPP_INFO(this->get_logger(), "Starting experiment: Formation Hold. With Leader: %s", leader_.c_str());
-		
-		if (px4_id_ != leader_) {
-			if (px4_id_ == "agent_2") {
-				follower_offset_.push_back(1.0);
-				follower_offset_.push_back(1.0);
-				follower_offset_.push_back(0.0);
-			}
-			else if (px4_id_ == "agent_3") {
-				follower_offset_.push_back(1.0);
-				follower_offset_.push_back(-1.0);
-				follower_offset_.push_back(0.0);
-			}
-			RCLCPP_INFO(this->get_logger(), "I AM A FOLLOWER, params set.");
-		}
-		else RCLCPP_INFO(this->get_logger(), "I AM THE LEADER");
-	}
 	
-	// for testing, just directly sending back a true response
+	// for teleop w/o experiment, just directly sending back a true response
 	swarm_interfaces::msg::PrepareExperimentResponse per_msg;
 	per_msg.agent_id = px4_id_;
 	per_msg.ready = true;
-	per_msg.message = std::string("Formation Hold");
+	per_msg.message = experiment_id_;
 	per_pub_->publish(per_msg);
 
 }
@@ -614,7 +529,7 @@ void PX4Teleop::ilc_callback(swarm_interfaces::msg::InitiateLandCommand::SharedP
 	}
 	
 	if (valid_spacing == true) {
-		experiment_land_requested_ = true;
+		coordinated_land_requested_ = true;
 		send_tol_request(false);
 	}
 
@@ -648,7 +563,7 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 	}
 
 	if (position_lock && valid_spacing) {
-		experiment_takeoff_requested_ = true;
+		coordinated_takeoff_requested_ = true;
 		send_arming_request(true);
 	}
 
@@ -656,38 +571,7 @@ void PX4Teleop::itc_callback(swarm_interfaces::msg::InitiateTakeoffCommand::Shar
 }
 
 void PX4Teleop::sec_callback(swarm_interfaces::msg::StartExperimentCommand::SharedPtr sec_msg) {
-
-	RCLCPP_INFO(this->get_logger(), "received start experiment request.");
-	
-	
-	if (px4_id_ != leader_) {
-		//TODO: NEED TO CONSIDER WHEN FOLLOWER GOES OFFBOARD VS WHEN THE CONTROL LOOP STARTS
-		k_ = 1.5;
-		control_input_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), 
-												 std::bind(&PX4Teleop::control_input, this));
-	}
-
-	experiment_start_time_ = sec_msg->timestamp;
-
-	if(px4_id_ == leader_) {
-		auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-		request->custom_mode = "OFFBOARD";
-		auto set_mode_request = set_mode_client_->async_send_request(
-			request,
-			[this](rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
-				auto response = future.get();
-
-				if (response->mode_sent) {
-					RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
-				}
-				else {
-					RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
-					
-					// TODO: something about failed request
-				}
-			}
-		);
-	}
+	RCLCPP_INFO(this->get_logger(), "received start experiment request with id: %s.", sec_msg->experiment_id.c_str());
 }
 
 void PX4Teleop::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
@@ -709,7 +593,7 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 
     if (response->success) {
 
-		if (experiment_takeoff_requested_) {
+		if (coordinated_takeoff_requested_) {
 
 			RCLCPP_INFO(this->get_logger(), "Experiment TOL request succeeded. Result=%d", response->result);
 
@@ -721,10 +605,10 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 			itr_msg.message = "Formation Hold";
 			itr_pub_->publish(itr_msg);
 
-			experiment_takeoff_requested_ = false;
+			coordinated_takeoff_requested_ = false;
 		}
 
-		else if (experiment_land_requested_) {
+		else if (coordinated_land_requested_) {
 			
 			swarm_interfaces::msg::InitiateLandResponse ilr_msg;
 			ilr_msg.agent_id = px4_id_;
@@ -732,7 +616,7 @@ void PX4Teleop::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTO
 			ilr_msg.message = "Formation Hold";
 			ilr_pub_->publish(ilr_msg);
 
-			experiment_land_requested_ = false;
+			coordinated_land_requested_ = false;
 
 		}
 	}
@@ -774,7 +658,7 @@ void PX4Teleop::arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBo
 
 	if (response->success) {
 
-		if (experiment_takeoff_requested_) {
+		if (coordinated_takeoff_requested_) {
 
 			RCLCPP_INFO(this->get_logger(), "Experiment Arm request succeeded. Result=%d", response->result);
 			std::this_thread::sleep_for(2000ms);

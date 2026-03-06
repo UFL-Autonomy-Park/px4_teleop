@@ -27,7 +27,6 @@
 
 // Custom Messages & Libraries
 #include <px4_safety_lib/PX4Safety.hpp>
-#include "ExperimentRunner.hpp"
 #include "JoyHandler.hpp"
 #include "swarm_interfaces/msg/connected_agents.hpp"
 #include "swarm_interfaces/msg/initiate_land_command.hpp"
@@ -56,7 +55,6 @@ class PX4Teleop : public rclcpp::Node {
   // === Handlers & Utilities ===
   std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety_;
   JoyHandler joy_handler_;
-  ExperimentRunner* experiment_runner_;
 
   // pub subs
   rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -105,9 +103,8 @@ class PX4Teleop : public rclcpp::Node {
   bool landing_requested_;
   bool sim_mode_;
   bool alt_init_;
-  bool experiment_takeoff_requested_;
-  bool experiment_land_requested_;
-  bool running_experiment_;
+  bool coordinated_takeoff_requested_;
+  bool coordinated_land_requested_;
 
   // === Origin & Coordinate Transformation ===
   double origin_r_;
@@ -118,7 +115,6 @@ class PX4Teleop : public rclcpp::Node {
   std::string experiment_id_;
   float takeoff_height_;
   float land_height_;
-  uint32_t experiment_start_time_;
   float minimum_takeoff_separation_;
   std::string leader_;
   std::vector<std::string> followers_;
