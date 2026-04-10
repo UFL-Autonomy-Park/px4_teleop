@@ -13,13 +13,12 @@
 #include <mavros_msgs/srv/set_mode.hpp>
 
 #include <px4_safety_lib/PX4Safety.hpp>
+#include <swarm_interfaces/frame_conversions.hpp>
 
 class PX4Teleop : public rclcpp::Node {
 private:
 	rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
-    
-
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
 
@@ -58,8 +57,6 @@ private:
 
     std::string agent_id_;
     geometry_msgs::msg::TwistStamped setpoint_vel_;
-
-    double origin_r_, cos_origin_, sin_origin_;
 
     bool pose_init_;
     std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety;

@@ -15,8 +15,8 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-
 find_package(px4_safety_lib REQUIRED)
+find_package(swarm_interfaces REQUIRED)
 
 add_executable(
     ${PROJECT_NAME}_node
@@ -36,7 +36,10 @@ ament_target_dependencies(
     tf2_ros
     tf2_geometry_msgs
     px4_safety_lib
+    swarm_interfaces
 )
+
+target_link_libraries(${PROJECT_NAME}_node swarm_interfaces::swarm_interfaces_lib)
 
 target_include_directories(
     ${PROJECT_NAME}_node PUBLIC

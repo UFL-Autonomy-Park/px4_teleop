@@ -2,6 +2,7 @@
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
+using namespace swarm_interfaces;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
 	RCLCPP_INFO(this->get_logger(), "Initializing PX4 Teleop Node");
@@ -31,18 +32,6 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     this->get_parameter("yaw_vel_max", axes_.yaw.factor);
 
     RCLCPP_INFO(this->get_logger(), "Loaded controller axis parameters:\nX: %d, Y: %d, Z: %d, Yaw: %d", axes_.x.axis, axes_.y.axis, axes_.z.axis, axes_.yaw.axis);
-
-    //Get park rotation from params (not optimal but needed because vel commands go to global ENU frame)
-    this->declare_parameter("origin_r", 0.0);
-    if (this->get_parameter("origin_r", origin_r_)) {
-        RCLCPP_INFO(this->get_logger(), "Park origin rotation set to %.4f rad.", origin_r_);
-        cos_origin_ = cos(origin_r_);
-        sin_origin_ = sin(origin_r_);
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Park origin rotation not set. Exiting.");
-        rclcpp::shutdown();
-        return;
-    }
 
     // initialize safety
 	try {
@@ -82,11 +71,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     //Generate safe velocity command
     geometry_msgs::msg::Twist safe_cmd_vel = px4_safety->compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
 
-    //Convert autonomy park X/Y velocity command to ENU frame
-    setpoint_vel_.twist.linear.x = cos_origin_*safe_cmd_vel.linear.x + sin_origin_*safe_cmd_vel.linear.y;
-    setpoint_vel_.twist.linear.y = -sin_origin_*safe_cmd_vel.linear.x + cos_origin_*safe_cmd_vel.linear.y;
-    setpoint_vel_.twist.linear.z = safe_cmd_vel.linear.z;
-    setpoint_vel_.twist.angular.z = safe_cmd_vel.angular.z;
+    setpoint_vel_.twist = frame_conversions::apark_to_enu(safe_cmd_vel);
 }
 
 void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr pose_msg) {
@@ -99,7 +84,7 @@ void PX4Teleop::pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr p
 void PX4Teleop::publish_setpoint() {
     rclcpp::Time now = this->get_clock()->now();
     setpoint_vel_.header.stamp = this->get_clock()->now();
-    vel_publisher_->publish(setpoint_vel_);
+    //vel_publisher_->publish(setpoint_vel_);
 }
 
 double PX4Teleop::get_axis(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Axis &axis) {
