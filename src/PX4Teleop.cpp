@@ -17,7 +17,6 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 
 	px4_id_ = std::string(this->get_namespace()).substr(1);
     
-	LeaderFollower lf(this);
 	init_publishers();
 	init_subscribers();
 	init_service_clients();
