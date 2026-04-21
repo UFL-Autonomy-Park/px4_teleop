@@ -2,6 +2,7 @@
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
+using namespace swarm_interfaces;
 
 PX4Teleop::PX4Teleop() : Node("px4_teleop_node"),
 	joy_handler_(this),
@@ -230,7 +231,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 	
 	// handle arm/takeoff
 	if (action.arm == true) {
-		if (current_state_.armed && landed_state_ == on_ground) {
+		if (current_state_.armed && agent_state_ == on_ground) {
 			send_tol_request(true);
 		}
 		else {
@@ -240,7 +241,7 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
 
 	// handle disarm/land
 	if (action.disarm == true) {
-		if (landed_state_ == on_ground) {
+		if (agent_state_ == on_ground) {
 			send_arming_request(false);
 		}
 		else {
@@ -415,7 +416,7 @@ void PX4Teleop::state_callback(const mavros_msgs::msg::State::SharedPtr state_ms
 	else if (state_msg->mode == "OFFBOARD" && current_state_.mode != "OFFBOARD") {
 
 		// if on ground when offboard is enabled, disable it
-		if (landed_state_ == on_ground) {
+		if (agent_state_ == on_ground) {
 			auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
 			request->custom_mode = "AUTO.LOITER";
 			auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&PX4Teleop::loiter_mode_response_callback, this, _1));
@@ -429,15 +430,6 @@ void PX4Teleop::state_callback(const mavros_msgs::msg::State::SharedPtr state_ms
     current_state_ = *state_msg;
 }
 
-double PX4Teleop::quat_to_yaw(geometry_msgs::msg::Quaternion quat) {
-
-    // yaw (z-axis rotation)
-    double siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y);
-    double cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z);
-    double yaw = std::atan2(siny_cosp, cosy_cosp);
-    return yaw;
-}
-
 void PX4Teleop::send_tol_request(bool takeoff) {
     auto tol_request = std::make_shared<mavros_msgs::srv::CommandTOL::Request>();
 
@@ -446,7 +438,7 @@ void PX4Teleop::send_tol_request(bool takeoff) {
     if (takeoff) {
         RCLCPP_WARN(this->get_logger(), "Sending takeoff request with altitude %.2f, takeoff_height: %.2f", altitude_amsl_, takeoff_height_);
         
-        tol_request->yaw = quat_to_yaw(takeoff_pose.orientation);
+        tol_request->yaw = frame_conversions::quat_to_yaw(takeoff_pose.orientation);
         tol_request->latitude = takeoff_pose.position.latitude;
         tol_request->longitude = takeoff_pose.position.longitude;
         tol_request->altitude = altitude_amsl_ - apark_pose_.position.z + takeoff_height_;
@@ -456,7 +448,7 @@ void PX4Teleop::send_tol_request(bool takeoff) {
         RCLCPP_WARN(this->get_logger(), "Sending landing request.");
 
         //Set landing pos to current @ 0 meter altitude
-        tol_request->yaw = quat_to_yaw(takeoff_pose.orientation);
+        tol_request->yaw = frame_conversions::quat_to_yaw(takeoff_pose.orientation);
         tol_request->latitude = takeoff_pose.position.latitude;
         tol_request->longitude = takeoff_pose.position.longitude;
         tol_request->altitude = 0.0;
@@ -469,7 +461,7 @@ void PX4Teleop::send_tol_request(bool takeoff) {
 
 void PX4Teleop::ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg) {
 
-    if ((LandedState)ext_state_msg->landed_state != landed_state_) {
+    if ((AgentState)ext_state_msg->landed_state != agent_state_) {
         switch (ext_state_msg->landed_state) {
             case undefined: {
                 RCLCPP_ERROR(this->get_logger(), "Undefined landed state!");
@@ -489,7 +481,7 @@ void PX4Teleop::ext_state_callback(const mavros_msgs::msg::ExtendedState::Shared
             }
         }
 
-        landed_state_ = (LandedState)ext_state_msg->landed_state;
+        agent_state_ = (AgentState)ext_state_msg->landed_state;
     }
 }
 

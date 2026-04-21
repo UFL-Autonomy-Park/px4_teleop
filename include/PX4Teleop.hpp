@@ -28,27 +28,28 @@
 // Custom Messages & Libraries
 #include <px4_safety_lib/PX4Safety.hpp>
 #include "JoyHandler.hpp"
-#include "swarm_interfaces/msg/connected_agents.hpp"
-#include "swarm_interfaces/msg/initiate_land_command.hpp"
-#include "swarm_interfaces/msg/initiate_land_response.hpp"
-#include "swarm_interfaces/msg/initiate_takeoff_command.hpp"
-#include "swarm_interfaces/msg/initiate_takeoff_response.hpp"
-#include "swarm_interfaces/msg/prepare_experiment_command.hpp"
-#include "swarm_interfaces/msg/prepare_experiment_response.hpp"
-#include "swarm_interfaces/msg/start_experiment_command.hpp"
+#include <swarm_interfaces/msg/connected_agents.hpp>
+#include <swarm_interfaces/msg/initiate_land_command.hpp>
+#include <swarm_interfaces/msg/initiate_land_response.hpp>
+#include <swarm_interfaces/msg/initiate_takeoff_command.hpp>
+#include <swarm_interfaces/msg/initiate_takeoff_response.hpp>
+#include <swarm_interfaces/msg/prepare_experiment_command.hpp>
+#include <swarm_interfaces/msg/prepare_experiment_response.hpp>
+#include <swarm_interfaces/msg/start_experiment_command.hpp>
+#include <swarm_interfaces/fleet_state.hpp>
+#include <swarm_interfaces/frame_conversions.hpp>
 
 class PX4Teleop : public rclcpp::Node {
  public:
   PX4Teleop();
 
  private:
-  enum LandedState { undefined = 0, on_ground, in_air, takeoff, landing };
 
   struct neighborState {
     geometry_msgs::msg::Pose pose;
     geometry_msgs::msg::Twist velocity;
     mavros_msgs::msg::State state;
-    LandedState landed_state;
+    AgentState agent_state;
     rclcpp::Time last_update;
   };
 
@@ -79,10 +80,15 @@ class PX4Teleop : public rclcpp::Node {
   std::string active_agent_id_;
   std::set<std::string> connected_agents_;
 
-  std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> neighbor_pose_subscriptions_;
+  // === Neighbor Management ===
+  std::map<std::string, NeighborState> neighbor_states_;
+
+  std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> 
+      neighbor_pose_subscriptions_;
   std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr>
       neighbor_velocity_subscriptions_;
-  std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> neighbor_state_subscriptions_;
+  std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr> 
+      neighbor_state_subscriptions_;
   std::map<std::string, rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr>
       neighbor_ext_state_subscriptions_;
   std::map<std::string, geometry_msgs::msg::PoseStamped> neighbor_poses_;
@@ -91,7 +97,7 @@ class PX4Teleop : public rclcpp::Node {
   std::map<std::string, mavros_msgs::msg::ExtendedState> neighbor_ext_states_;
 
   // === State Variables ===
-  LandedState landed_state_;
+  AgentState agent_state_;
   mavros_msgs::msg::State current_state_;
   geometry_msgs::msg::Pose apark_pose_;
   geographic_msgs::msg::GeoPose global_pose_;
@@ -164,7 +170,6 @@ class PX4Teleop : public rclcpp::Node {
   void init_service_clients();
 
   void send_tol_request(bool takeoff);
-  double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
   void add_agent(const std::string& agent_name);
   void remove_agent(const std::string& agent_name);
   void send_arming_request(bool arm);
