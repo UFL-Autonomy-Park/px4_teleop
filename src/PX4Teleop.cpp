@@ -45,12 +45,10 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
     }
 
     //Get simulation mode parameter
-    //See KNOWN ISSUE note on sim_mode_ in PX4Teleop.hpp and the comment block in
-    //joy_callback() below for why sim needs to skip the ENU rotation.
     this->declare_parameter("sim_mode", false);
     this->get_parameter("sim_mode", sim_mode_);
     if (sim_mode_) {
-        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled: skipping ENU rotation of safety cmd_vel (see KNOWN ISSUE note).");
+        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled: skipping ENU rotation of safety cmd_vel.");
     }
 
     // initialize safety
@@ -91,36 +89,6 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     //Generate safe velocity command
     geometry_msgs::msg::Twist safe_cmd_vel = px4_safety->compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
 
-    // ---- KNOWN ISSUE (2026-08-20) -----------------------------------------
-    // Convert autonomy park X/Y velocity command to ENU frame -- on real
-    // hardware. MAVROS's local ENU there is genuinely true-North/East
-    // referenced (from PX4's GPS-anchored EKF), so safe_cmd_vel (computed by
-    // px4_safety_lib in Park frame) has to be rotated by origin_r_ before it
-    // goes out over setpoint_velocity/cmd_vel.
-    //
-    // In the autonomy_park_sitl Gazebo world, this double-corrects. That
-    // world's spherical_coordinates heading_deg only rotates Gazebo's GPS
-    // plugin (world Cartesian <-> lat/lon), which is what px4_telemetry's
-    // GPS->UTM->apark pipeline (origin_r_ in PX4Telemetry.cpp) uses to build
-    // autonomy_park/pose -- so that pipeline, and thus agent_pose_/the
-    // fence math above, is already correct in sim.
-    // PX4 SITL's internal local NED/EKF state (what MAVROS's "ENU" is
-    // actually referenced to for velocity setpoints) is fed from Gazebo's
-    // raw world-Cartesian ground truth and is NOT rotated by heading_deg.
-    // Since the world SDF was authored with the park geometry directly in
-    // that Cartesian frame, Gazebo's world frame IS the Park frame already.
-    // Rotating safe_cmd_vel by origin_r_ again here sends it out in the
-    // wrong direction, so the safety-corrected velocity ends up misaligned
-    // with the physical (and Gazebo) park boundary even though the fence
-    // itself was evaluated against the correct position.
-    //
-    // Fix: sim_mode_ skips this rotation (identity) so the Park-frame
-    // safe_cmd_vel is sent through unrotated, matching Gazebo's world frame.
-    // This whole stack is slated for a rewrite, so this is a targeted patch,
-    // not a general solution -- if origin_r_'s real-world meaning or the
-    // sim's world-frame authoring convention ever changes, this needs another
-    // look.
-    // -------------------------------------------------------------------
     if (sim_mode_) {
         setpoint_vel_.twist.linear.x = safe_cmd_vel.linear.x;
         setpoint_vel_.twist.linear.y = safe_cmd_vel.linear.y;

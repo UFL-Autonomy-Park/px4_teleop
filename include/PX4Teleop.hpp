@@ -61,12 +61,6 @@ private:
 
     double origin_r_, cos_origin_, sin_origin_;
 
-    // KNOWN ISSUE (2026-08-20): see joy_callback() for the full explanation.
-    // In our Gazebo SITL, MAVROS's "ENU" local frame is not true-north-referenced
-    // like it is on real hardware -- it's already equal to the Park frame. Rotating
-    // by origin_r_ here double-corrects and misaligns the potential-field safety
-    // fence from the physical park in sim. sim_mode_ gates that rotation off.
-    // Slated for a full rewrite of this stack; not fixing "properly" for now.
     bool sim_mode_;
 
     bool pose_init_;
