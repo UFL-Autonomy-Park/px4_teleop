@@ -44,6 +44,13 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
         return;
     }
 
+    //Get simulation mode parameter
+    this->declare_parameter("sim_mode", false);
+    this->get_parameter("sim_mode", sim_mode_);
+    if (sim_mode_) {
+        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled: skipping ENU rotation of safety cmd_vel.");
+    }
+
     // initialize safety
 	try {
         px4_safety = std::make_unique<px4_safety_lib::PX4Safety>(*this);
