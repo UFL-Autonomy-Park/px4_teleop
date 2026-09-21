@@ -44,13 +44,6 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
         return;
     }
 
-    //Get simulation mode parameter
-    this->declare_parameter("sim_mode", false);
-    this->get_parameter("sim_mode", sim_mode_);
-    if (sim_mode_) {
-        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled: skipping ENU rotation of safety cmd_vel.");
-    }
-
     // initialize safety
 	try {
         px4_safety = std::make_unique<px4_safety_lib::PX4Safety>(*this);
@@ -89,6 +82,9 @@ void PX4Teleop::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     //Generate safe velocity command
     geometry_msgs::msg::Twist safe_cmd_vel = px4_safety->compute_safe_cmd_vel(agent_pose_, unsafe_cmd_vel);
 
+    // IN SITL, I chose to rotate the Gazebo coordinate frame to be aligned with the coordinate the alligns with the
+    // net...which is not north or east naturally. Hence, setpoints need to be rotated in the real world but NOT in the
+    // autonomy_park_sitl --Max G.
     if (sim_mode_) {
         setpoint_vel_.twist.linear.x = safe_cmd_vel.linear.x;
         setpoint_vel_.twist.linear.y = safe_cmd_vel.linear.y;

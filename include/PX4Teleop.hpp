@@ -61,8 +61,6 @@ private:
 
     double origin_r_, cos_origin_, sin_origin_;
 
-    bool sim_mode_;
-
     bool pose_init_;
     std::unique_ptr<px4_safety_lib::PX4Safety> px4_safety;
 
