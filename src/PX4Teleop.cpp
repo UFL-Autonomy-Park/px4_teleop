@@ -63,7 +63,7 @@ PX4Teleop::PX4Teleop() : Node("px4_teleop_node"), pose_init_(false) {
 
     //Publish setpoints at 50Hz
     setpoint_timer_ = this->create_wall_timer(20ms, std::bind(&PX4Teleop::publish_setpoint, this));
-    vel_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("setpoint_velocity/cmd_vel", 10);
+    vel_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
     
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Teleop::joy_callback, this, _1));
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 10, std::bind(&PX4Teleop::pose_callback, this, _1));
